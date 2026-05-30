@@ -150,8 +150,9 @@ export default function AuthBackground() {
             canvas.width = Math.max(1, Math.floor(width * dpr));
             canvas.height = Math.max(1, Math.floor(height * dpr));
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-            radius = Math.hypot(width, height) * 0.46;
-            fov = Math.max(680, Math.hypot(width, height) * 0.9);
+            const diag = Math.hypot(width, height);
+            radius = diag * 0.46;
+            fov = Math.max(680, diag * 0.9);
             buildNodes();
         };
 
@@ -200,34 +201,52 @@ export default function AuthBackground() {
             n.scale = scale;
         };
 
+        // Cercanía real a la cámara: 0 (lejos) → 0.5 (plano medio, en foco) → 1 (cerca).
+        const proximity = (n) => Math.max(0, Math.min(1, (-n.depth / radius + 1) / 2));
+
         const drawNode = (n) => {
-            // 0 (lejos) → 1 (cerca)
-            const dz = (n.depth + radius) / (radius * 2);
+            const prox = proximity(n);
+            // Foco perfecto en el plano medio (prox≈0.5); se desenfoca hacia ambos extremos.
+            const focus = 1 - Math.min(1, Math.abs(prox - 0.5) * 2);
+            const soft = 1 - focus; // 0 nítido → 1 difuso (sin coste de ctx.filter)
+            // Presencia por cercanía: lejos = tenue, cerca = clara/brillante (monótona).
+            const presence = 0.14 + prox * 0.86;
             const glow = 0.5 + 0.5 * Math.sin(n.phase);
-            const r = (7 + 9 * dz) * n.scale;
-            const a = 0.45 + dz * 0.5;
+            const r = (6 + 9 * prox) * n.scale;
             const coin = n.coin;
 
-            // Halo con el color de marca de la cripto
-            const grad = ctx.createRadialGradient(n.sx, n.sy, 0, n.sx, n.sy, r * 2.4);
-            grad.addColorStop(0, hexA(coin.color, (0.22 + glow * 0.22) * dz));
-            grad.addColorStop(1, hexA(coin.color, 0));
-            ctx.fillStyle = grad;
+            // Halo de color: crece y se difumina con el desenfoque (efecto bokeh).
+            const haloR = r * (2.1 + soft * 1.8);
+            const halo = ctx.createRadialGradient(n.sx, n.sy, 0, n.sx, n.sy, haloR);
+            halo.addColorStop(0, hexA(coin.color, (0.15 + glow * 0.18) * presence));
+            halo.addColorStop(1, hexA(coin.color, 0));
+            ctx.fillStyle = halo;
             ctx.beginPath();
-            ctx.arc(n.sx, n.sy, r * 2.4, 0, Math.PI * 2);
+            ctx.arc(n.sx, n.sy, haloR, 0, Math.PI * 2);
             ctx.fill();
 
-            // Ficha (token) circular
+            // Ficha (token): disco sólido en foco, borde emplumado fuera de foco.
+            const edge = Math.min(0.97, 0.4 + focus * 0.57);
+            const disc = ctx.createRadialGradient(n.sx, n.sy, 0, n.sx, n.sy, r);
+            disc.addColorStop(0, hexA(coin.color, presence * 0.85));
+            disc.addColorStop(edge, hexA(coin.color, presence * 0.85));
+            disc.addColorStop(1, hexA(coin.color, 0));
+            ctx.fillStyle = disc;
             ctx.beginPath();
             ctx.arc(n.sx, n.sy, r, 0, Math.PI * 2);
-            ctx.fillStyle = hexA(coin.color, a);
             ctx.fill();
-            ctx.lineWidth = 1;
-            ctx.strokeStyle = `rgba(255,255,255,${0.18 * dz})`;
-            ctx.stroke();
 
-            // Símbolo / logo en blanco
-            const gAlpha = 0.55 + dz * 0.45;
+            // Borde fino: sólo nítido cerca del foco.
+            if (focus > 0.05) {
+                ctx.lineWidth = 1;
+                ctx.strokeStyle = `rgba(255,255,255,${0.16 * presence * focus})`;
+                ctx.beginPath();
+                ctx.arc(n.sx, n.sy, r * edge, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            // Símbolo / logo en blanco: presente siempre, más definido en el plano de foco.
+            const gAlpha = presence * (0.35 + 0.65 * focus);
             ctx.fillStyle = `rgba(255,255,255,${gAlpha})`;
             ctx.strokeStyle = `rgba(255,255,255,${gAlpha})`;
             if (coin.glyph && GLYPHS[coin.glyph]) {
@@ -299,16 +318,21 @@ export default function AuthBackground() {
             ctx.clearRect(0, 0, width, height);
             for (const n of nodes) project(n);
 
-            // Aristas entre nodos cercanos en 3D
+            // Aristas entre nodos cercanos en 3D — el elemento protagónico (conexiones)
+            const EDGE_DIST = 0.5;
             for (let i = 0; i < nodes.length; i++) {
                 for (let j = i + 1; j < nodes.length; j++) {
                     const a = nodes[i], b = nodes[j];
                     const d2 = (a.bx - b.bx) ** 2 + (a.by - b.by) ** 2 + (a.bz - b.bz) ** 2;
-                    if (d2 < 0.45) {
-                        const dz = ((a.depth + b.depth) / 2 + radius) / (radius * 2);
-                        const al = (1 - d2 / 0.45) * 0.16 * dz;
-                        ctx.strokeStyle = rgba([130, 150, 190], al);
-                        ctx.lineWidth = 1;
+                    if (d2 < EDGE_DIST) {
+                        const prox = (proximity(a) + proximity(b)) / 2; // 0 lejos → 1 cerca
+                        const t = 1 - d2 / EDGE_DIST;                   // proximidad de los nodos entre sí
+                        // Más notorias: alpha base alto y realce con la cercanía a cámara.
+                        const al = t * (0.2 + prox * 0.55);
+                        // Las cercanas se ven más claras; las lejanas, más apagadas.
+                        const col = mix([80, 100, 140], [170, 200, 255], prox);
+                        ctx.strokeStyle = rgba(col, al);
+                        ctx.lineWidth = (0.8 + prox * 1.7) * ((a.scale + b.scale) / 2);
                         ctx.beginPath();
                         ctx.moveTo(a.sx, a.sy);
                         ctx.lineTo(b.sx, b.sy);

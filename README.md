@@ -50,13 +50,11 @@ existe una **oportunidad de arbitraje**. El motor:
 
 ## 1.3 Acceso
 
-La consola web vive en:
+- **Producción:** <https://trad.ers.lat>
+- **Local:** `http://localhost:18080/console` (el puerto por defecto es `18080`; ver Parte 2).
 
-```
-http://localhost:18080/console
-```
-
-(El puerto por defecto es `18080`; ver Parte 2.)
+La ruta base redirige automáticamente a la consola, así que basta con abrir el dominio
+raíz.
 
 ## 1.4 Flujo de primer uso
 
@@ -98,6 +96,36 @@ Menú lateral, dividido en **Monitoreo** y **Sistema**:
 - **Engine** — Salud del motor, conexiones por exchange y latencias.
 - **Autopilot** — Optimización champion-challenger entre variantes de estrategia.
 - **Configuración** — Edición de reglas de operación y gestión de riesgo.
+
+### Capturas de pantalla
+
+**Inicio de sesión** — acceso a la consola con el fondo animado de la red de divisas.
+
+![Pantalla de inicio de sesión](docs/screenshots/login.png)
+
+**Dashboard** — P&L acumulado, KPIs del día y oportunidades en vivo.
+
+![Dashboard](docs/screenshots/dashboard.png)
+
+**Oportunidades** — monitor en tiempo real con decisión (`execute` / `reject` / `ignore`) por oportunidad.
+
+![Oportunidades](docs/screenshots/oportunidades.png)
+
+**Wallets** — balances simulados por exchange y distribución de capital.
+
+![Wallets](docs/screenshots/wallets.png)
+
+**Engine** — estado del motor, modo simulación (deriva/slippage) y zona de reinicio.
+
+![Engine](docs/screenshots/engine.png)
+
+**Configuración** — reglas de operación, gestión de riesgo y wallets simuladas.
+
+![Configuración](docs/screenshots/configuracion.png)
+
+**Autopilot** — optimización champion-challenger y comparación de estrategias.
+
+![Autopilot](docs/screenshots/autopilot.png)
 
 ## 1.6 Controles del encabezado
 
