@@ -2,7 +2,8 @@
 import { useState } from 'react';
 import { useNifty } from '../data/store';
 import { I } from '../nifty/icons';
-import { Lat, Toggle, NumField, CyclesPanel } from '../nifty/widgets';
+import { Lat, Toggle, NumField, CyclesPanel, Th } from '../nifty/widgets';
+import { InfoTip } from '../nifty/InfoTip';
 import { ResetProcessModal } from '../nifty/ResetModal';
 import { exLabel, exColor, signedMoney, relativeTime, discardLabel, fmt } from '../nifty/format';
 
@@ -136,28 +137,28 @@ export default function EngineScreen() {
     const discardMax = discardRows.reduce((m, r) => Math.max(m, r.count), 0);
     const decisions = live?.decisions || {};
     const funnelTiles = [
-        { l: 'Snapshots', v: live ? fmt(live.snapshots_processed ?? 0, 0) : '—', c: 'var(--turq)' },
-        { l: 'Candidatos', v: live ? fmt(live.candidates_detected ?? 0, 0) : '—', c: 'var(--fuchsia)' },
-        { l: 'Ejecutadas', v: live ? fmt(decisions.execute ?? 0, 0) : '—', c: 'var(--profit)' },
-        { l: 'Rechazadas', v: live ? fmt(decisions.reject ?? 0, 0) : '—', c: 'var(--warn)' },
-        { l: 'Descartes', v: live ? fmt(discardTotal, 0) : '—', c: 'var(--tx-mid)' },
+        { l: 'Snapshots', v: live ? fmt(live.snapshots_processed ?? 0, 0) : '—', c: 'var(--turq)', g: 'funnel_snapshots' },
+        { l: 'Candidatos', v: live ? fmt(live.candidates_detected ?? 0, 0) : '—', c: 'var(--fuchsia)', g: 'funnel_candidatos' },
+        { l: 'Ejecutadas', v: live ? fmt(decisions.execute ?? 0, 0) : '—', c: 'var(--profit)', g: 'estado_opp' },
+        { l: 'Rechazadas', v: live ? fmt(decisions.reject ?? 0, 0) : '—', c: 'var(--warn)', g: 'estado_opp' },
+        { l: 'Descartes', v: live ? fmt(discardTotal, 0) : '—', c: 'var(--tx-mid)', g: 'funnel_descartes' },
     ];
 
     const metricTiles = [
-        { l: 'Trades totales', v: metrics.trades_total ?? '—' },
-        { l: 'Oportunidades totales', v: metrics.opportunities_total ?? '—' },
-        { l: 'Detectadas / hora', v: metrics.opportunities_last_hour ?? '—' },
-        { l: 'Ejecutadas / hora', v: metrics.executed_last_hour ?? '—' },
-        { l: 'P&L realizado', v: metrics.realized_pnl != null ? signedMoney(metrics.realized_pnl) : '—' },
-        { l: 'Modo actual', v: metrics.mode || 'Demo' },
+        { l: 'Trades totales', v: metrics.trades_total ?? '—', g: 'trades_totales' },
+        { l: 'Oportunidades totales', v: metrics.opportunities_total ?? '—', g: 'oportunidades_totales' },
+        { l: 'Detectadas / hora', v: metrics.opportunities_last_hour ?? '—', g: 'detectadas_hora' },
+        { l: 'Ejecutadas / hora', v: metrics.executed_last_hour ?? '—', g: 'estado_opp' },
+        { l: 'P&L realizado', v: metrics.realized_pnl != null ? signedMoney(metrics.realized_pnl) : '—', g: 'pnl_realizado' },
+        { l: 'Modo actual', v: metrics.mode || 'Demo', g: 'modo_simulacion' },
     ];
 
     return (
         <div className="content">
             <div className="grid-3">
-                <div className="panel mtile hud"><div className="ml">Estado del engine</div><div className={'mv ' + (simulation.active ? 'pos' : '')} style={simulation.active ? {} : { color: 'var(--tx-mid)' }}>● {simulation.active ? 'Activo' : 'Detenido'}</div><div className="mvsub">{metrics.mode || 'Demo'}</div></div>
-                <div className="panel mtile"><div className="ml">Circuit breaker</div><div className={'mv ' + (metrics.circuit_breaker_enabled ? 'pos' : '')} style={metrics.circuit_breaker_enabled ? {} : { color: 'var(--tx-mid)' }}>{metrics.circuit_breaker_enabled ? 'ON' : 'OFF'}</div><div className="mvsub">protección de riesgo</div></div>
-                <div className="panel mtile"><div className="ml">Exchanges conectados</div><div className="mv">{online} / {conns.length}</div><div className="mvsub">{conns.length - online} con incidencias</div></div>
+                <div className="panel mtile hud"><div className="ml">Estado del engine<InfoTip g="estado_engine" /></div><div className={'mv ' + (simulation.active ? 'pos' : '')} style={simulation.active ? {} : { color: 'var(--tx-mid)' }}>● {simulation.active ? 'Activo' : 'Detenido'}</div><div className="mvsub">{metrics.mode || 'Demo'}</div></div>
+                <div className="panel mtile"><div className="ml">Circuit breaker<InfoTip g="circuit_breaker" /></div><div className={'mv ' + (metrics.circuit_breaker_enabled ? 'pos' : '')} style={metrics.circuit_breaker_enabled ? {} : { color: 'var(--tx-mid)' }}>{metrics.circuit_breaker_enabled ? 'ON' : 'OFF'}</div><div className="mvsub">protección de riesgo</div></div>
+                <div className="panel mtile"><div className="ml">Exchanges conectados<InfoTip g="exchanges_conectados" /></div><div className="mv">{online} / {conns.length}</div><div className="mvsub">{conns.length - online} con incidencias</div></div>
             </div>
 
             <SimulationPanel />
@@ -171,7 +172,7 @@ export default function EngineScreen() {
                 <div style={{ overflowX: 'auto' }}>
                     <table className="tbl">
                         <thead>
-                            <tr><th>Exchange</th><th>Conexión</th><th>Tipo</th><th>Último mensaje</th><th>Latencia</th><th>Estado feed</th></tr>
+                            <tr><th>Exchange</th><th>Conexión</th><th>Tipo</th><th>Último mensaje</th><Th info="latencia">Latencia</Th><Th info="estado_feed">Estado feed</Th></tr>
                         </thead>
                         <tbody>
                             {conns.length === 0 ? (
@@ -194,7 +195,7 @@ export default function EngineScreen() {
             <div className="panel">
                 <div className="panel-h">
                     <I.engine style={{ width: 16, height: 16, color: 'var(--fuchsia)' }} />
-                    <h2>Embudo de descartes</h2>
+                    <h2>Embudo de descartes<InfoTip g="embudo_descartes" /></h2>
                     <div className="right">
                         <span className={'pill ' + (live ? 'live' : '')} style={{ fontSize: '10px', padding: '4px 9px' }}>
                             <span className="dot" />{live ? 'en vivo' : 'sin datos'}
@@ -205,7 +206,7 @@ export default function EngineScreen() {
                     <div className="grid-3" style={{ gridTemplateColumns: 'repeat(5, 1fr)', marginBottom: 14 }}>
                         {funnelTiles.map((t, i) => (
                             <div key={i} className="mtile" style={{ padding: '8px 0' }}>
-                                <div className="ml">{t.l}</div>
+                                <div className="ml">{t.l}{t.g && <InfoTip g={t.g} />}</div>
                                 <div className="mv" style={{ fontSize: 20, color: t.c }}>{t.v}</div>
                             </div>
                         ))}
@@ -259,7 +260,7 @@ export default function EngineScreen() {
                     <div className="cfg-grid" style={{ marginTop: 6 }}>
                         {metricTiles.map((m, i) => (
                             <div key={i} className="mtile" style={{ padding: '10px 0' }}>
-                                <div className="ml">{m.l}</div>
+                                <div className="ml">{m.l}{m.g && <InfoTip g={m.g} />}</div>
                                 <div className="mv" style={{ fontSize: 20 }}>{m.v}</div>
                             </div>
                         ))}

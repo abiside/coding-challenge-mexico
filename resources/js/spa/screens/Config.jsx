@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { useNifty } from '../data/store';
 import { I } from '../nifty/icons';
 import { NumField, Toggle } from '../nifty/widgets';
+import { InfoTip } from '../nifty/InfoTip';
 import { exLabel, exColor, deriveMarketRows } from '../nifty/format';
 
 export default function ConfigScreen() {
@@ -95,7 +96,7 @@ export default function ConfigScreen() {
                                 <div className="exc-kv"><span className="k">Par</span><span className="v">{(cfg.symbols || ['BTC/USDT'])[0]}</span></div>
                                 <div className="exc-kv"><span className="k">Feed</span><span className="v" style={{ color: conn === 'ok' ? 'var(--profit)' : 'var(--warn)' }}>{conn === 'ok' ? 'fresco' : conn === 'stale' ? 'atrasado' : 'sin datos'}</span></div>
                                 <div style={{ width: 150 }}>
-                                    <NumField label="Fee taker (%)" value={pct} unit="%" step={0.01} onChange={(v) => setFee(ex, v)} />
+                                    <NumField label="Fee taker (%)" info="fee_taker" value={pct} unit="%" step={0.01} onChange={(v) => setFee(ex, v)} />
                                 </div>
                             </div>
                         </div>
@@ -108,15 +109,15 @@ export default function ConfigScreen() {
                 <div className="panel panel-pad">
                     <div className="sec-title"><h3>Reglas de operación</h3><span className="ln" /></div>
                     <div className="cfg-grid" style={{ marginTop: 8 }}>
-                        <NumField label="Volumen mínimo" value={cfg.min_base_volume} unit="BTC" step={0.0001} onChange={(v) => set('min_base_volume', v)} />
-                        <NumField label="Volumen máximo" value={cfg.max_base_volume} unit="BTC" step={0.01} onChange={(v) => set('max_base_volume', v)} />
-                        <NumField label="Profit neto mínimo" value={cfg.min_net_profit} unit="USDT" step={0.01} onChange={(v) => set('min_net_profit', v)} />
-                        <NumField label="Margen neto mínimo" value={cfg.min_net_margin} unit="frac" step={0.0001} onChange={(v) => set('min_net_margin', v)} />
-                        <NumField label="Edad máx. order book" value={cfg.freshness_ms} unit="ms" step={100} onChange={(v) => set('freshness_ms', v)} />
-                        <NumField label="Latencia máxima" value={cfg.latency_max_ms} unit="ms" step={100} onChange={(v) => set('latency_max_ms', v)} />
+                        <NumField label="Volumen mínimo" info="volumen_minimo" value={cfg.min_base_volume} unit="BTC" step={0.0001} onChange={(v) => set('min_base_volume', v)} />
+                        <NumField label="Volumen máximo" info="volumen_maximo" value={cfg.max_base_volume} unit="BTC" step={0.01} onChange={(v) => set('max_base_volume', v)} />
+                        <NumField label="Profit neto mínimo" info="min_net_profit" value={cfg.min_net_profit} unit="USDT" step={0.01} onChange={(v) => set('min_net_profit', v)} />
+                        <NumField label="Margen neto mínimo" info="min_net_margin" value={cfg.min_net_margin} unit="frac" step={0.0001} onChange={(v) => set('min_net_margin', v)} />
+                        <NumField label="Edad máx. order book" info="freshness" value={cfg.freshness_ms} unit="ms" step={100} onChange={(v) => set('freshness_ms', v)} />
+                        <NumField label="Latencia máxima" info="latency_max" value={cfg.latency_max_ms} unit="ms" step={100} onChange={(v) => set('latency_max_ms', v)} />
                     </div>
                     <div style={{ marginTop: 16 }}>
-                        <div className="nf-label" style={{ marginBottom: 8 }}>Símbolos a evaluar</div>
+                        <div className="nf-label" style={{ marginBottom: 8 }}>Símbolos a evaluar<InfoTip g="simbolos" /></div>
                         <div className="sym-grid">
                             {(options.symbols || []).map((s) => (
                                 <span key={s} className={'sym-chip' + ((cfg.symbols || []).includes(s) ? ' on' : '')} onClick={() => toggleSymbol(s)}>{s}</span>
@@ -128,15 +129,15 @@ export default function ConfigScreen() {
                 <div className="panel panel-pad">
                     <div className="sec-title"><h3>Risk manager</h3><span className="ln" /></div>
                     <div className="cfg-row">
-                        <div className="cfg-info"><div className="cfg-name">Circuit breaker</div><div className="cfg-desc">Pausar el motor ante rachas de rechazos/errores</div></div>
+                        <div className="cfg-info"><div className="cfg-name">Circuit breaker<InfoTip g="circuit_breaker" /></div><div className="cfg-desc">Pausar el motor ante rachas de rechazos/errores</div></div>
                         <Toggle on={!!cfg.circuit_breaker_enabled} onChange={(v) => set('circuit_breaker_enabled', v)} />
                     </div>
                     <div className="cfg-row">
-                        <div className="cfg-info"><div className="cfg-name">Autopilot</div><div className="cfg-desc">Optimización champion-challenger (en la pestaña Autopilot)</div></div>
+                        <div className="cfg-info"><div className="cfg-name">Autopilot<InfoTip g="autopilot_flag" /></div><div className="cfg-desc">Optimización champion-challenger (en la pestaña Autopilot)</div></div>
                         <span className={'wstat ' + (settings.autopilot_enabled ? 'ok' : 'warn')}>● {settings.autopilot_enabled ? 'Activo' : 'Apagado'}</span>
                     </div>
                     <div className="cfg-row" style={{ borderBottom: 'none' }}>
-                        <div className="cfg-info"><div className="cfg-name">Objetivo de optimización</div><div className="cfg-desc">Función objetivo del optimizador</div></div>
+                        <div className="cfg-info"><div className="cfg-name">Objetivo de optimización<InfoTip g="objetivo_optimizacion" /></div><div className="cfg-desc">Función objetivo del optimizador</div></div>
                         <span className="mono" style={{ color: 'var(--tx-hi)' }}>{settings.optimization_objective || 'net_pnl'}</span>
                     </div>
                 </div>

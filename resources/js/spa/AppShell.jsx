@@ -4,6 +4,7 @@ import { I } from './nifty/icons';
 import { BrandLogo } from './nifty/BrandLogo';
 import { useNifty } from './data/store';
 import { OppDrawer } from './nifty/OppDrawer';
+import { HelpProvider } from './nifty/HelpPanel';
 import { ResetProcessModal } from './nifty/ResetModal';
 import DashboardScreen from './screens/Dashboard';
 import MarketScreen from './screens/Market';
@@ -239,14 +240,16 @@ export default function AppShell({ user, onLogout }) {
     }
 
     return (
-        <div className="app">
-            <Sidebar active={active} onNav={setActive} />
-            <div className="main">
-                <Header active={active} user={user} onLogout={onLogout} />
-                <SimulatorInvite />
-                {view}
+        <HelpProvider>
+            <div className="app">
+                <Sidebar active={active} onNav={setActive} />
+                <div className="main">
+                    <Header active={active} user={user} onLogout={onLogout} />
+                    <SimulatorInvite />
+                    {view}
+                </div>
+                <OppDrawer o={open} onClose={() => setOpen(null)} />
             </div>
-            <OppDrawer o={open} onClose={() => setOpen(null)} />
-        </div>
+        </HelpProvider>
     );
 }

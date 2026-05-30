@@ -2,6 +2,8 @@
 import { useNifty } from '../data/store';
 import { I } from '../nifty/icons';
 import { deriveWallets, fmt } from '../nifty/format';
+import { Th } from '../nifty/widgets';
+import { InfoTip } from '../nifty/InfoTip';
 
 const WSTAT = {
     ok: { c: 'ok', t: 'Balanceada' },
@@ -36,9 +38,9 @@ export default function WalletsScreen() {
     return (
         <div className="content">
             <div className="grid-3">
-                <div className="panel mtile hud"><div className="ml">Valor total estimado</div><div className="mv">${fmt(totalValue)}</div><div className="mvsub">{withStatus.length} exchanges · BTC ${fmt(price)}</div></div>
-                <div className="panel mtile"><div className="ml">P&L realizado</div><div className={'mv ' + (realizedPnl >= 0 ? 'pos' : 'neg')}>{realizedPnl >= 0 ? '+' : '−'}${fmt(Math.abs(realizedPnl))}</div><div className="mvsub">acumulado en simulación</div></div>
-                <div className="panel mtile"><div className="ml">BTC de referencia</div><div className="mv">${fmt(price)}</div><div className="mvsub">mid cross-exchange</div></div>
+                <div className="panel mtile hud"><div className="ml">Valor total estimado<InfoTip g="valor_total" /></div><div className="mv">${fmt(totalValue)}</div><div className="mvsub">{withStatus.length} exchanges · BTC ${fmt(price)}</div></div>
+                <div className="panel mtile"><div className="ml">P&L realizado<InfoTip g="pnl_realizado" /></div><div className={'mv ' + (realizedPnl >= 0 ? 'pos' : 'neg')}>{realizedPnl >= 0 ? '+' : '−'}${fmt(Math.abs(realizedPnl))}</div><div className="mvsub">acumulado en simulación</div></div>
+                <div className="panel mtile"><div className="ml">BTC de referencia<InfoTip g="btc_referencia" /></div><div className="mv">${fmt(price)}</div><div className="mvsub">mid cross-exchange</div></div>
             </div>
 
             <div className="col-2">
@@ -47,7 +49,7 @@ export default function WalletsScreen() {
                     <div style={{ overflowX: 'auto' }}>
                         <table className="tbl">
                             <thead>
-                                <tr><th>Exchange</th><th>BTC</th><th>USDT</th><th>Valor total</th><th>% capital</th><th>Estado</th></tr>
+                                <tr><th>Exchange</th><th>BTC</th><th>USDT</th><Th info="valor_total">Valor total</Th><Th info="pct_capital">% capital</Th><Th info="estado_wallet">Estado</Th></tr>
                             </thead>
                             <tbody>
                                 {withStatus.length === 0 ? (

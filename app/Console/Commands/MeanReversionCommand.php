@@ -355,15 +355,24 @@ class MeanReversionCommand extends Command
             return;
         }
 
+        // Valuación marcada a mercado: el capital desplegado se valora al último
+        // precio observado, no a su costo de entrada. Así el equity y el P&L NO
+        // realizado reflejan el riesgo real de la inversión en tiempo real.
+        $valuation = $ctx['engine']->valuation();
+        $usdtBalance = round($ctx['wallets']->available($this->exchange, $this->quote), 4);
+
         $payload = array_merge($ctx['metrics']->toArray(), [
             'user_id' => $userId,
             'exchange' => $this->exchange,
             'quote' => $this->quote,
             'open_positions' => $ctx['positions']->openCount(),
             'deployed_usdt' => round($ctx['positions']->totalCostBasis(), 4),
-            'positions' => $ctx['positions']->snapshot(),
+            'deployed_value' => $valuation['deployed_value'],
+            'unrealized_pnl' => $valuation['unrealized_pnl'],
+            'equity_value' => round($usdtBalance + $valuation['deployed_value'], 4),
+            'positions' => $valuation['positions'],
             'wallet' => $ctx['wallets']->snapshot(),
-            'usdt_balance' => round($ctx['wallets']->available($this->exchange, $this->quote), 4),
+            'usdt_balance' => $usdtBalance,
             'server_time_ms' => (int) (microtime(true) * 1000),
             'updated_at' => now()->toIso8601String(),
         ]);

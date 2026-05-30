@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useNifty } from '../data/store';
 import { I } from '../nifty/icons';
 import { BigChart, BarChart, Columns, Donut, Segmented } from '../nifty/widgets';
+import { InfoTip } from '../nifty/InfoTip';
 import { derivePerf, deriveChartSeries, fmt } from '../nifty/format';
 
 function HBars({ rows }) {
@@ -42,21 +43,21 @@ export default function PerfScreen() {
     const chartSeries = deriveChartSeries(trades, tf);
 
     const qmetrics = [
-        { l: 'Win rate', v: p.winRate + '%' },
-        { l: 'Profit factor', v: p.profitFactor.toFixed(2) },
-        { l: 'Profit neto prom.', v: '+$' + p.profitAvg.toFixed(2) },
-        { l: 'Pérdida prom.', v: '−$' + Math.abs(p.lossAvg).toFixed(2) },
-        { l: 'Spread bruto prom.', v: '+' + p.avgGross.toFixed(2) + '%' },
-        { l: 'Spread neto prom.', v: (p.avgNet >= 0 ? '+' : '') + p.avgNet.toFixed(2) + '%' },
-        { l: '% rechazos', v: p.rejectPct + '%' },
-        { l: 'Razón principal', v: p.mainReject, small: true },
+        { l: 'Win rate', v: p.winRate + '%', g: 'win_rate' },
+        { l: 'Profit factor', v: p.profitFactor.toFixed(2), g: 'profit_factor' },
+        { l: 'Profit neto prom.', v: '+$' + p.profitAvg.toFixed(2), g: 'profit_promedio' },
+        { l: 'Pérdida prom.', v: '−$' + Math.abs(p.lossAvg).toFixed(2), g: 'perdida_promedio' },
+        { l: 'Spread bruto prom.', v: '+' + p.avgGross.toFixed(2) + '%', g: 'spread_bruto' },
+        { l: 'Spread neto prom.', v: (p.avgNet >= 0 ? '+' : '') + p.avgNet.toFixed(2) + '%', g: 'spread_neto' },
+        { l: '% rechazos', v: p.rejectPct + '%', g: 'pct_rechazos' },
+        { l: 'Razón principal', v: p.mainReject, small: true, g: 'razon_principal' },
     ];
 
     return (
         <div className="content">
             <div className="grid-3" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
-                <div className="panel mtile hud" style={{ background: 'linear-gradient(150deg, rgba(47,240,207,0.07), transparent 70%)' }}><div className="ml">P&L acumulado</div><div className={'mv ' + (p.pnlAcc >= 0 ? 'pos' : 'neg')}>{p.pnlAcc >= 0 ? '+' : '−'}${fmt(Math.abs(p.pnlAcc))}</div></div>
-                <div className="panel mtile"><div className="ml">P&L del día</div><div className={'mv ' + (p.pnlDay >= 0 ? 'pos' : 'neg')}>{p.pnlDay >= 0 ? '+' : '−'}${fmt(Math.abs(p.pnlDay))}</div></div>
+                <div className="panel mtile hud" style={{ background: 'linear-gradient(150deg, rgba(47,240,207,0.07), transparent 70%)' }}><div className="ml">P&L acumulado<InfoTip g="pnl_acumulado" /></div><div className={'mv ' + (p.pnlAcc >= 0 ? 'pos' : 'neg')}>{p.pnlAcc >= 0 ? '+' : '−'}${fmt(Math.abs(p.pnlAcc))}</div></div>
+                <div className="panel mtile"><div className="ml">P&L del día<InfoTip g="pnl_dia" /></div><div className={'mv ' + (p.pnlDay >= 0 ? 'pos' : 'neg')}>{p.pnlDay >= 0 ? '+' : '−'}${fmt(Math.abs(p.pnlDay))}</div></div>
                 <div className="panel mtile"><div className="ml">Mejor operación</div><div className="mv pos">+${p.best.toFixed(2)}</div></div>
                 <div className="panel mtile"><div className="ml">Peor operación</div><div className="mv neg">−${Math.abs(p.worst).toFixed(2)}</div></div>
             </div>
@@ -117,7 +118,7 @@ export default function PerfScreen() {
             <div className="grid-3" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
                 {qmetrics.map((q, i) => (
                     <div className="panel mtile" key={i}>
-                        <div className="ml">{q.l}</div>
+                        <div className="ml">{q.l}{q.g && <InfoTip g={q.g} />}</div>
                         <div className="mv" style={{ fontSize: q.small ? 15 : 24 }}>{q.v}</div>
                     </div>
                 ))}

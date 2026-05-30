@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { useNifty } from '../data/store';
 import { I } from '../nifty/icons';
 import { normalizeOpportunity, fmt, signedMoney } from '../nifty/format';
-import { Segmented, CyclesPanel } from '../nifty/widgets';
+import { Segmented, CyclesPanel, Th } from '../nifty/widgets';
+import { InfoTip } from '../nifty/InfoTip';
 
 const FILTERS = [
     { v: 'all', l: 'Todas' }, { v: 'eval', l: 'En evaluación' },
@@ -41,10 +42,10 @@ export default function OppsScreen({ onOpen }) {
             {mode === 'triangular' ? (
                 <>
                     <div className="grid-3" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
-                        <div className="panel mtile"><div className="ml">Ciclos totales</div><div className="mv">{cyclesSummary?.cycles_total ?? 0}</div></div>
+                        <div className="panel mtile"><div className="ml">Ciclos totales<InfoTip g="triangular" /></div><div className="mv">{cyclesSummary?.cycles_total ?? 0}</div></div>
                         <div className="panel mtile"><div className="ml">Ejecutados / hora</div><div className="mv pos">{cyclesSummary?.executed_last_hour ?? 0}</div></div>
-                        <div className="panel mtile"><div className="ml">P&L realizado (1h)</div><div className={'mv ' + ((cyclesSummary?.realized_pnl_last_hour ?? 0) >= 0 ? 'pos' : 'neg')}>{signedMoney(cyclesSummary?.realized_pnl_last_hour ?? 0)}</div></div>
-                        <div className="panel mtile"><div className="ml">P&L realizado (total)</div><div className={'mv ' + ((cyclesSummary?.realized_pnl ?? 0) >= 0 ? 'pos' : 'neg')}>{signedMoney(cyclesSummary?.realized_pnl ?? 0)}</div></div>
+                        <div className="panel mtile"><div className="ml">P&L realizado (1h)<InfoTip g="pnl_realizado" /></div><div className={'mv ' + ((cyclesSummary?.realized_pnl_last_hour ?? 0) >= 0 ? 'pos' : 'neg')}>{signedMoney(cyclesSummary?.realized_pnl_last_hour ?? 0)}</div></div>
+                        <div className="panel mtile"><div className="ml">P&L realizado (total)<InfoTip g="pnl_realizado" /></div><div className={'mv ' + ((cyclesSummary?.realized_pnl ?? 0) >= 0 ? 'pos' : 'neg')}>{signedMoney(cyclesSummary?.realized_pnl ?? 0)}</div></div>
                     </div>
                     <CyclesPanel cycleFeed={cycleFeed} cycles={cycles} summary={cyclesSummary} limit={80} />
                     <div className="muted" style={{ fontSize: 12, paddingLeft: 4 }}>Los ciclos triangulares mueven la billetera dentro de un mismo exchange (USDT→BTC→ETH→USDT) y no generan filas en el flujo de 2 patas.</div>
@@ -52,10 +53,10 @@ export default function OppsScreen({ onOpen }) {
             ) : (
             <>
             <div className="grid-3" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
-                <div className="panel mtile"><div className="ml">Detectadas / hora</div><div className="mv">{detectedHour}</div></div>
-                <div className="panel mtile"><div className="ml">En evaluación</div><div className="mv" style={{ color: 'var(--warn)' }}>{counts.eval}</div></div>
-                <div className="panel mtile"><div className="ml">Ejecutadas</div><div className="mv pos">{counts.exec}</div></div>
-                <div className="panel mtile"><div className="ml">Rechazadas / ign.</div><div className="mv neg">{counts.reject + counts.expired}</div></div>
+                <div className="panel mtile"><div className="ml">Detectadas / hora<InfoTip g="detectadas_hora" /></div><div className="mv">{detectedHour}</div></div>
+                <div className="panel mtile"><div className="ml">En evaluación<InfoTip g="estado_opp" /></div><div className="mv" style={{ color: 'var(--warn)' }}>{counts.eval}</div></div>
+                <div className="panel mtile"><div className="ml">Ejecutadas<InfoTip g="estado_opp" /></div><div className="mv pos">{counts.exec}</div></div>
+                <div className="panel mtile"><div className="ml">Rechazadas / ign.<InfoTip g="estado_opp" /></div><div className="mv neg">{counts.reject + counts.expired}</div></div>
             </div>
 
             <div className="panel">
@@ -72,8 +73,11 @@ export default function OppsScreen({ onOpen }) {
                     <table className="tbl">
                         <thead>
                             <tr>
-                                <th>Hora</th><th>Comprar</th><th>Vender</th><th>P. compra</th><th>P. venta</th>
-                                <th>Spread bruto</th><th>Spread neto</th><th>Volumen</th><th>Profit</th><th>Estado</th>
+                                <th>Hora</th>
+                                <Th info="comprar">Comprar</Th><Th info="vender">Vender</Th>
+                                <Th info="precio_compra">P. compra</Th><Th info="precio_venta">P. venta</Th>
+                                <Th info="spread_bruto">Spread bruto</Th><Th info="spread_neto">Spread neto</Th>
+                                <Th info="volumen_op">Volumen</Th><Th info="profit">Profit</Th><Th info="estado_opp">Estado</Th>
                             </tr>
                         </thead>
                         <tbody>

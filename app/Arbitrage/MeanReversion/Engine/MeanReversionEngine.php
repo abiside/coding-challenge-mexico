@@ -34,6 +34,9 @@ final class MeanReversionEngine
     /** @var array<string, int>  symbol => epoch ms del último trade */
     private array $lastTradeMs = [];
 
+    /** @var array<string, float>  symbol => último mid observado (para marcar a mercado) */
+    private array $lastMid = [];
+
     public function __construct(
         private readonly PriceWindowStore $windows,
         private readonly SignalEvaluator $evaluator,
@@ -64,6 +67,7 @@ final class MeanReversionEngine
         }
 
         $symbol = $snapshot->symbol;
+        $this->lastMid[$symbol] = $mid;
         $nowMs = (int) (microtime(true) * 1000);
 
         $this->metrics->recordSnapshot();
@@ -198,6 +202,55 @@ final class MeanReversionEngine
         $signal = new EvaluatedSignal($candidate, $quoteAmount, $quoteAmount / $price);
 
         return [RiskDecision::execute($quoteAmount / $price), $signal];
+    }
+
+    /**
+     * Valuación de la cartera marcada a mercado: cada posición se valora al
+     * último mid observado de su símbolo (no a su costo de entrada), para que el
+     * dashboard refleje el valor real del capital desplegado y el P&L NO
+     * realizado en tiempo real. Si aún no se observó precio para un símbolo
+     * (p. ej. recién rehidratado), esa posición cae al costo base para no romper
+     * el equity total.
+     *
+     * @return array{
+     *   positions: array<int, array{asset: string, quantity: float, cost_basis: float, avg_cost: float, opened_at_ms: int, last_price: float|null, market_value: float|null, unrealized_pnl: float|null, unrealized_pct: float|null}>,
+     *   deployed_value: float,
+     *   deployed_cost: float,
+     *   unrealized_pnl: float
+     * }
+     */
+    public function valuation(): array
+    {
+        $positions = [];
+        $marketValue = 0.0;
+        $costBasis = 0.0;
+
+        foreach ($this->positions->snapshot() as $pos) {
+            $symbol = $pos['asset'].'/'.$this->quoteAsset;
+            $price = $this->lastMid[$symbol] ?? null;
+            $value = $price !== null ? $pos['quantity'] * $price : null;
+            $unrealized = $value !== null ? $value - $pos['cost_basis'] : null;
+
+            $positions[] = $pos + [
+                'last_price' => $price,
+                'market_value' => $value !== null ? round($value, 4) : null,
+                'unrealized_pnl' => $unrealized !== null ? round($unrealized, 4) : null,
+                'unrealized_pct' => ($unrealized !== null && $pos['cost_basis'] > 0.0)
+                    ? round($unrealized / $pos['cost_basis'] * 100.0, 4)
+                    : null,
+            ];
+
+            // Sin precio aún: usa el costo base como mejor estimación del valor.
+            $marketValue += $value ?? $pos['cost_basis'];
+            $costBasis += $pos['cost_basis'];
+        }
+
+        return [
+            'positions' => $positions,
+            'deployed_value' => round($marketValue, 4),
+            'deployed_cost' => round($costBasis, 4),
+            'unrealized_pnl' => round($marketValue - $costBasis, 4),
+        ];
     }
 
     private function midPrice(OrderBookSnapshot $snapshot): float

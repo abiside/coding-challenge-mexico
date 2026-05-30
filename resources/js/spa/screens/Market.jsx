@@ -1,7 +1,8 @@
 /* NIFTY — Mercado: order book consolidado por exchange (datos reales de Redis). */
 import { useNifty } from '../data/store';
 import { I } from '../nifty/icons';
-import { Lat } from '../nifty/widgets';
+import { Lat, Th } from '../nifty/widgets';
+import { InfoTip } from '../nifty/InfoTip';
 import { deriveMarketRows, fmt, relativeTime } from '../nifty/format';
 
 export default function MarketScreen() {
@@ -19,17 +20,17 @@ export default function MarketScreen() {
         <div className="content">
             <div className="grid-3">
                 <div className="panel mtile hud">
-                    <div className="ml">Mejor precio de compra</div>
+                    <div className="ml">Mejor precio de compra<InfoTip g="best_ask" /></div>
                     <div className="mv pos">{bestAsk ? '$' + fmt(bestAsk.ask) : '—'}</div>
                     <div className="mvsub">{bestAsk ? <><span style={{ color: bestAsk.color }}>●</span> {bestAsk.ex} · ask · {bestAsk.askQ != null ? bestAsk.askQ.toFixed(2) : '—'} BTC</> : 'sin datos'}</div>
                 </div>
                 <div className="panel mtile">
-                    <div className="ml">Mejor precio de venta</div>
+                    <div className="ml">Mejor precio de venta<InfoTip g="best_bid" /></div>
                     <div className="mv" style={{ color: 'var(--turq)' }}>{bestBid ? '$' + fmt(bestBid.bid) : '—'}</div>
                     <div className="mvsub">{bestBid ? <><span style={{ color: bestBid.color }}>●</span> {bestBid.ex} · bid · {bestBid.bidQ != null ? bestBid.bidQ.toFixed(2) : '—'} BTC</> : 'sin datos'}</div>
                 </div>
                 <div className="panel mtile" style={{ background: crossSpread > 0 ? 'linear-gradient(150deg, rgba(47,240,207,0.07), transparent 70%)' : 'transparent' }}>
-                    <div className="ml">Spread cross-exchange</div>
+                    <div className="ml">Spread cross-exchange<InfoTip g="spread_bruto" /></div>
                     <div className={'mv ' + (crossSpread > 0 ? 'pos' : 'neg')}>{crossSpread != null ? (crossSpread > 0 ? '+' : '−') + '$' + Math.abs(crossSpread).toFixed(2) : '—'}</div>
                     <div className="mvsub">{crossPct != null ? `${crossPct >= 0 ? '+' : ''}${crossPct.toFixed(3)}% · ${bestAsk.ex} → ${bestBid.ex}` : '—'}</div>
                 </div>
@@ -48,9 +49,9 @@ export default function MarketScreen() {
                     <table className="tbl">
                         <thead>
                             <tr>
-                                <th>Exchange</th><th>Par</th><th>Best Bid</th><th>Qty Bid</th>
-                                <th>Best Ask</th><th>Qty Ask</th><th>Spread int.</th>
-                                <th>Actualización</th><th>Latencia</th><th>Estado</th>
+                                <th>Exchange</th><th>Par</th><Th info="best_bid">Best Bid</Th><Th info="qty">Qty Bid</Th>
+                                <Th info="best_ask">Best Ask</Th><Th info="qty">Qty Ask</Th><Th info="spread">Spread int.</Th>
+                                <th>Actualización</th><Th info="latencia">Latencia</Th><Th info="estado_feed">Estado</Th>
                             </tr>
                         </thead>
                         <tbody>

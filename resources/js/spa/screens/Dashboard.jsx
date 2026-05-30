@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { api } from '../client';
 import { useNifty } from '../data/store';
 import { I } from '../nifty/icons';
-import { Kpi, BigChart, OppRow, Lat, Segmented, CyclesPanel } from '../nifty/widgets';
+import { Kpi, BigChart, OppRow, Lat, Segmented, CyclesPanel, Th } from '../nifty/widgets';
 import { deriveKpis, deriveChartSeries, equityToChartSeries, deriveWinRateSpark, windowTotal, normalizeOpportunity, deriveMarketRows, fmt, signedMoney } from '../nifty/format';
 
 export default function DashboardScreen({ onOpen }) {
@@ -41,13 +41,13 @@ export default function DashboardScreen({ onOpen }) {
     return (
         <div className="content">
             <div className="kpis">
-                <Kpi hero label="P&L acumulado" icon={I.pnl} value={pnlValue}
+                <Kpi hero label="P&L acumulado" icon={I.pnl} value={pnlValue} info="pnl_acumulado"
                     detail={k.pnl.detail} spark={chart} sparkColor="#2ff0cf" />
-                <Kpi label="Ganancia neta del día" icon={I.day} value={k.day.value}
+                <Kpi label="Ganancia neta del día" icon={I.day} value={k.day.value} info="pnl_dia"
                     detail={k.day.detail} sparkColor="#2fe3b6" />
-                <Kpi label="Win rate" icon={I.target} value={k.winRate.value}
+                <Kpi label="Win rate" icon={I.target} value={k.winRate.value} info="win_rate"
                     detail={k.winRate.detail} spark={winSpark} sparkColor="#b964e0" />
-                <Kpi label="Volumen simulado" icon={I.vol} value={k.volume.value}
+                <Kpi label="Volumen simulado" icon={I.vol} value={k.volume.value} info="volumen_simulado"
                     detail={k.volume.detail} sparkColor="#ff39a8" />
             </div>
 
@@ -104,8 +104,10 @@ export default function DashboardScreen({ onOpen }) {
                     <table className="tbl">
                         <thead>
                             <tr>
-                                <th>Exchange</th><th>Best Bid</th><th>Qty</th><th>Best Ask</th><th>Qty</th>
-                                <th>Spread</th><th>Latencia</th><th>Estado</th>
+                                <th>Exchange</th>
+                                <Th info="best_bid">Best Bid</Th><Th info="qty">Qty</Th>
+                                <Th info="best_ask">Best Ask</Th><Th info="qty">Qty</Th>
+                                <Th info="spread">Spread</Th><Th info="latencia">Latencia</Th><Th info="estado_feed">Estado</Th>
                             </tr>
                         </thead>
                         <tbody>

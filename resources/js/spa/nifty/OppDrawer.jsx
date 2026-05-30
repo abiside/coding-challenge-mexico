@@ -1,5 +1,6 @@
 /* NIFTY — drawer de detalle de oportunidad (portado del diseño, cableado a datos reales) */
 import { I } from './icons';
+import { InfoTip } from './InfoTip';
 import { fmt, fmtLatency } from './format';
 
 function Book({ side, levels, label }) {
@@ -63,29 +64,29 @@ export function OppDrawer({ o, onClose }) {
                 <div className="drawer-sec">
                     <div className="sec-t">Resumen de oportunidad</div>
                     <div className="kv-grid">
-                        <div className="kv"><span className="k">Volumen evaluado</span><span className="v">{o.vol.toFixed(4)} BTC</span></div>
-                        <div className="kv"><span className="k">Rentabilidad neta</span><span className={'v ' + profitClass}>{o.netPct >= 0 ? '+' : ''}{o.netPct.toFixed(2)}%</span></div>
-                        <div className="kv"><span className="k">Precio compra prom.</span><span className="v">${fmt(o.buyPrice)}</span></div>
-                        <div className="kv"><span className="k">Precio venta prom.</span><span className="v">${fmt(o.sellPrice)}</span></div>
-                        <div className="kv"><span className="k">Spread bruto</span><span className="v">+{o.grossPct.toFixed(2)}%</span></div>
-                        <div className="kv"><span className="k">Profit neto final</span><span className={'v ' + profitClass}>{f.net >= 0 ? '+' : '−'}${fmt(Math.abs(f.net))}</span></div>
+                        <div className="kv"><span className="k">Volumen evaluado<InfoTip g="volumen_op" /></span><span className="v">{o.vol.toFixed(4)} BTC</span></div>
+                        <div className="kv"><span className="k">Rentabilidad neta<InfoTip g="spread_neto" /></span><span className={'v ' + profitClass}>{o.netPct >= 0 ? '+' : ''}{o.netPct.toFixed(2)}%</span></div>
+                        <div className="kv"><span className="k">Precio compra prom.<InfoTip g="precio_compra" /></span><span className="v">${fmt(o.buyPrice)}</span></div>
+                        <div className="kv"><span className="k">Precio venta prom.<InfoTip g="precio_venta" /></span><span className="v">${fmt(o.sellPrice)}</span></div>
+                        <div className="kv"><span className="k">Spread bruto<InfoTip g="spread_bruto" /></span><span className="v">+{o.grossPct.toFixed(2)}%</span></div>
+                        <div className="kv"><span className="k">Profit neto final<InfoTip g="profit_neto_final" /></span><span className={'v ' + profitClass}>{f.net >= 0 ? '+' : '−'}${fmt(Math.abs(f.net))}</span></div>
                         {o.evaluationLatencyUs != null && (
-                            <div className="kv"><span className="k">Latencia de evaluación</span><span className="v">{fmtLatency(o.evaluationLatencyUs)}</span></div>
+                            <div className="kv"><span className="k">Latencia de evaluación<InfoTip g="latencia_evaluacion" /></span><span className="v">{fmtLatency(o.evaluationLatencyUs)}</span></div>
                         )}
                     </div>
                 </div>
 
                 <div className="drawer-sec">
-                    <div className="sec-t">Desglose financiero</div>
+                    <div className="sec-t">Desglose financiero<InfoTip g="profit_neto_final" /></div>
                     {reconciles ? (
                         <>
                             <div className="fin">
-                                <div className="frow gain"><span className="fl">Spread bruto teórico (mejores precios)</span><span className="fv">+${fmt(f.theoreticalGross)}</span></div>
-                                {f.slippage != null && <div className="frow cost"><span className="fl">Slippage por profundidad</span><span className="fv">−${fmt(f.slippage)}</span></div>}
-                                {f.buyFee != null && <div className="frow cost"><span className="fl">Fee de compra</span><span className="fv">−${fmt(f.buyFee)}</span></div>}
-                                {f.sellFee != null && <div className="frow cost"><span className="fl">Fee de venta</span><span className="fv">−${fmt(f.sellFee)}</span></div>}
-                                {f.latency != null && f.latency > 0 && <div className="frow cost"><span className="fl">Penalización por latencia</span><span className="fv">−${fmt(f.latency)}</span></div>}
-                                {f.fixedCost != null && f.fixedCost > 0 && <div className="frow cost"><span className="fl">Costo fijo</span><span className="fv">−${fmt(f.fixedCost)}</span></div>}
+                                <div className="frow gain"><span className="fl">Spread bruto teórico (mejores precios)<InfoTip g="spread_teorico" /></span><span className="fv">+${fmt(f.theoreticalGross)}</span></div>
+                                {f.slippage != null && <div className="frow cost"><span className="fl">Slippage por profundidad<InfoTip g="slippage" /></span><span className="fv">−${fmt(f.slippage)}</span></div>}
+                                {f.buyFee != null && <div className="frow cost"><span className="fl">Fee de compra<InfoTip g="fee_compra" /></span><span className="fv">−${fmt(f.buyFee)}</span></div>}
+                                {f.sellFee != null && <div className="frow cost"><span className="fl">Fee de venta<InfoTip g="fee_venta" /></span><span className="fv">−${fmt(f.sellFee)}</span></div>}
+                                {f.latency != null && f.latency > 0 && <div className="frow cost"><span className="fl">Penalización por latencia<InfoTip g="penalizacion_latencia" /></span><span className="fv">−${fmt(f.latency)}</span></div>}
+                                {f.fixedCost != null && f.fixedCost > 0 && <div className="frow cost"><span className="fl">Costo fijo<InfoTip g="costo_fijo" /></span><span className="fv">−${fmt(f.fixedCost)}</span></div>}
                                 <div className="frow cost" style={{ opacity: 0.9 }}><span className="fl">Costos totales</span><span className="fv">−${fmt(f.breakdownTotal)}</span></div>
                                 <div className="frow total"><span className="fl">Ganancia neta final</span><span className="fv" style={{ color: f.net >= 0 ? 'var(--profit)' : 'var(--loss)' }}>{f.net >= 0 ? '+' : '−'}${fmt(Math.abs(f.net))}</span></div>
                             </div>
@@ -109,11 +110,11 @@ export function OppDrawer({ o, onClose }) {
 
                 {f.realized != null && (
                     <div className="drawer-sec">
-                        <div className="sec-t">Identificada vs. ejecutada</div>
+                        <div className="sec-t">Identificada vs. ejecutada<InfoTip g="slippage_ejecucion" /></div>
                         <div className="fin">
-                            <div className="frow"><span className="fl">Profit neto identificado (evaluado)</span><span className="fv" style={{ color: f.net >= 0 ? 'var(--profit)' : 'var(--loss)' }}>{f.net >= 0 ? '+' : '−'}${fmt(Math.abs(f.net))}</span></div>
-                            <div className="frow"><span className="fl">P&L realmente realizado</span><span className="fv" style={{ color: f.realized >= 0 ? 'var(--profit)' : 'var(--loss)' }}>{f.realized >= 0 ? '+' : '−'}${fmt(Math.abs(f.realized))}</span></div>
-                            <div className="frow total"><span className="fl">Diferencia (slippage de ejecución)</span><span className="fv" style={{ color: (f.executionDelta || 0) >= 0 ? 'var(--profit)' : 'var(--loss)' }}>{(f.executionDelta || 0) >= 0 ? '+' : '−'}${fmt(Math.abs(f.executionDelta || 0))}</span></div>
+                            <div className="frow"><span className="fl">Profit neto identificado (evaluado)<InfoTip g="profit_neto_final" /></span><span className="fv" style={{ color: f.net >= 0 ? 'var(--profit)' : 'var(--loss)' }}>{f.net >= 0 ? '+' : '−'}${fmt(Math.abs(f.net))}</span></div>
+                            <div className="frow"><span className="fl">P&L realmente realizado<InfoTip g="realizado" /></span><span className="fv" style={{ color: f.realized >= 0 ? 'var(--profit)' : 'var(--loss)' }}>{f.realized >= 0 ? '+' : '−'}${fmt(Math.abs(f.realized))}</span></div>
+                            <div className="frow total"><span className="fl">Diferencia (slippage de ejecución)<InfoTip g="slippage_ejecucion" /></span><span className="fv" style={{ color: (f.executionDelta || 0) >= 0 ? 'var(--profit)' : 'var(--loss)' }}>{(f.executionDelta || 0) >= 0 ? '+' : '−'}${fmt(Math.abs(f.executionDelta || 0))}</span></div>
                         </div>
                         <div className="num" style={{ fontSize: '10px', color: 'var(--tx-faint)', marginTop: '10px', textAlign: 'center' }}>
                             el precio se movió entre la detección y el trade
@@ -122,7 +123,7 @@ export function OppDrawer({ o, onClose }) {
                 )}
 
                 <div className="drawer-sec">
-                    <div className="sec-t">Liquidez usada · order book</div>
+                    <div className="sec-t">Liquidez usada · order book<InfoTip g="liquidez_usada" /></div>
                     <div className="books">
                         <Book side="buy" levels={o.books.buy} label={'Compra · ' + o.buy} />
                         <Book side="sell" levels={o.books.sell} label={'Venta · ' + o.sell} />
@@ -133,7 +134,7 @@ export function OppDrawer({ o, onClose }) {
                 </div>
 
                 <div className="drawer-sec" style={{ borderBottom: 'none' }}>
-                    <div className="sec-t">Decisión del bot</div>
+                    <div className="sec-t">Decisión del bot<InfoTip g="decision_bot" /></div>
                     <div className={'decision ' + dClass}>
                         <div className="dh">{dHead}</div>
                         {o.decision}

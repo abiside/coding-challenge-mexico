@@ -2,6 +2,14 @@
 import { useRef, useState } from 'react';
 import { stageLabel, signedMoney, fmtCompact, fmt, normalizeCycle, mergeCycles } from './format';
 import { I } from './icons';
+import { InfoTip } from './InfoTip';
+
+/* Encabezado de tabla con tooltip opcional (prop `info` = clave del glosario). */
+export function Th({ children, info, ...rest }) {
+    return (
+        <th {...rest}>{children}{info && <InfoTip g={info} />}</th>
+    );
+}
 
 /* ---------- Sparkline ---------- */
 export function Sparkline({ data, color = 'var(--turq)', h = 30 }) {
@@ -34,12 +42,12 @@ export function Sparkline({ data, color = 'var(--turq)', h = 30 }) {
 }
 
 /* ---------- KPI card ---------- */
-export function Kpi({ hero, label, icon, value, delta, deltaDir, detail, spark, sparkColor }) {
+export function Kpi({ hero, label, icon, value, delta, deltaDir, detail, spark, sparkColor, info }) {
     const Icon = icon;
     return (
         <div className={'panel kpi' + (hero ? ' hero hud' : '')}>
             <div className="kpi-top">
-                <span className="label">{label}</span>
+                <span className="label">{label}{info && <InfoTip g={info} />}</span>
                 <span className="ico"><Icon /></span>
             </div>
             <div className="big">{value}</div>
@@ -573,10 +581,10 @@ export function Segmented({ value, options, onChange }) {
 }
 
 /* ---------- Numeric field with unit ---------- */
-export function NumField({ label, value, unit, onChange, step = 1 }) {
+export function NumField({ label, value, unit, onChange, step = 1, info }) {
     return (
         <label className="numfield">
-            <span className="nf-label">{label}</span>
+            <span className="nf-label">{label}{info && <InfoTip g={info} />}</span>
             <span className="nf-input">
                 <input type="number" value={value} step={step} onChange={(e) => onChange(parseFloat(e.target.value))} />
                 {unit && <span className="nf-unit">{unit}</span>}

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { api } from '../client';
 import { I } from '../nifty/icons';
 import { Toggle, MultiLineChart, lineColor } from '../nifty/widgets';
+import { InfoTip } from '../nifty/InfoTip';
 import { signedMoney } from '../nifty/format';
 
 function badgeClass(status) {
@@ -42,7 +43,7 @@ function StrategyCard({ strategy, championScore, onPromote, busy }) {
                     {strategy.rationale && <p className="muted" style={{ marginTop: 8, fontSize: 13, lineHeight: 1.5 }}>{strategy.rationale}</p>}
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                    <div className="ml" style={{ marginBottom: 0 }}>Score</div>
+                    <div className="ml" style={{ marginBottom: 0 }}>Score<InfoTip g="score" /></div>
                     <div className={'mono ' + (Number(strategy.score) >= 0 ? 'pos' : 'neg')} style={{ fontSize: 20, fontWeight: 700 }}>{Number(strategy.score).toFixed(2)}</div>
                     {edge != null && isChallenger && (
                         <div className={'mono ' + (edge >= 0 ? 'pos' : 'neg')} style={{ fontSize: 12 }}>{edge >= 0 ? '+' : ''}{edge.toFixed(2)} vs champ</div>
@@ -139,15 +140,15 @@ export default function AutopilotScreen() {
                 </div>
                 <div className="panel-pad">
                     <div className="grid-3">
-                        <div><div className="ml">Objetivo</div><div className="mv" style={{ fontSize: 18 }}>{settings?.optimization_objective || 'net_pnl'}</div></div>
+                        <div><div className="ml">Objetivo<InfoTip g="objetivo_optimizacion" /></div><div className="mv" style={{ fontSize: 18 }}>{settings?.optimization_objective || 'net_pnl'}</div></div>
                         <div>
-                            <div className="ml">Max challengers</div>
+                            <div className="ml">Max challengers<InfoTip g="max_challengers" /></div>
                             <select className="input" style={{ width: 'auto', marginTop: 4 }} value={settings?.autopilot_max_challengers ?? 2} onChange={(e) => updateMaxChallengers(Number(e.target.value))} disabled={busy || !settings}>
                                 {[0, 1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>{n}</option>)}
                             </select>
                         </div>
                         <div>
-                            <div className="ml">Periodo de promoción</div>
+                            <div className="ml">Periodo de promoción<InfoTip g="periodo_promocion" /></div>
                             <select className="input" style={{ width: 'auto', marginTop: 4 }} value={settings?.autopilot_interval_minutes ?? 10} onChange={(e) => updateInterval(Number(e.target.value))} disabled={busy || !settings}>
                                 {[1, 2, 5, 10, 15, 30, 60, 120, 240].map((n) => <option key={n} value={n}>{n} min</option>)}
                             </select>
@@ -155,7 +156,7 @@ export default function AutopilotScreen() {
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
                         <div>
-                            <div style={{ fontSize: 14, fontWeight: 600 }}>Lanzar nuevo champion automáticamente</div>
+                            <div style={{ fontSize: 14, fontWeight: 600 }}>Lanzar nuevo champion automáticamente<InfoTip g="auto_promote" /></div>
                             <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
                                 {settings?.autopilot_auto_promote
                                     ? `El ganador se promueve solo, como máximo cada ${settings?.autopilot_interval_minutes ?? 10} min.`
@@ -195,10 +196,10 @@ export default function AutopilotScreen() {
                 </div>
             </div>
 
-            <div className="sec-title"><h3>Champion</h3><span className="ln" /></div>
+            <div className="sec-title"><h3>Champion<InfoTip g="champion" /></h3><span className="ln" /></div>
             {champion ? <StrategyCard strategy={champion} championScore={null} /> : <div className="empty-note">Aún no hay champion. Inicia la simulación.</div>}
 
-            <div className="sec-title"><h3>Challengers ({challengers.length})</h3><span className="ln" /></div>
+            <div className="sec-title"><h3>Challengers ({challengers.length})<InfoTip g="challenger" /></h3><span className="ln" /></div>
             {challengers.length === 0 ? (
                 <div className="empty-note">{settings?.autopilot_enabled ? 'Esperando al optimizador… (se generan en el próximo ciclo)' : 'Enciende el autopilot para que el agente proponga challengers.'}</div>
             ) : challengers.map((s) => (

@@ -5,6 +5,8 @@
 import { useState } from 'react';
 import { useNifty } from '../data/store';
 import { I } from '../nifty/icons';
+import { Th } from '../nifty/widgets';
+import { InfoTip } from '../nifty/InfoTip';
 import { fmt, signedMoney, timeFromMs, relativeTime } from '../nifty/format';
 
 const REASON_LABEL = {
@@ -40,10 +42,10 @@ function mergeSignals(live, recent) {
     return out.slice(0, 50);
 }
 
-function Kpi({ label, value, cls, detail }) {
+function Kpi({ label, value, cls, detail, info }) {
     return (
         <div className="panel mtile">
-            <div className="ml">{label}</div>
+            <div className="ml">{label}{info && <InfoTip g={info} />}</div>
             <div className={'mv' + (cls ? ' ' + cls : '')}>{value}</div>
             {detail != null && <div className="ml" style={{ marginTop: 4 }}>{detail}</div>}
         </div>
@@ -60,10 +62,14 @@ export default function MeanReversionScreen() {
     const running = !!metrics;
     const positions = metrics?.positions || [];
     const usdt = metrics?.usdt_balance;
-    const deployed = metrics?.deployed_usdt;
+    const deployedCost = metrics?.deployed_usdt;
+    // Valor de mercado del capital desplegado (marcado a precio actual). Cae al
+    // costo base si el worker aún no publica la valuación (compatibilidad).
+    const deployedValue = metrics?.deployed_value ?? deployedCost;
+    const unrealized = Number(metrics?.unrealized_pnl) || 0;
     const realized = metrics?.realized_pnl ?? meanRevTrades?.summary?.realized_pnl ?? 0;
     const executions = metrics?.executions ?? meanRevTrades?.summary?.trades_total ?? 0;
-    const equity = (Number(usdt) || 0) + (Number(deployed) || 0);
+    const equity = metrics?.equity_value ?? ((Number(usdt) || 0) + (Number(deployedValue) || 0));
 
     const signals = mergeSignals(meanRevFeed, meanRev?.recent_signals);
     const trades = meanRevTrades?.data || [];
@@ -73,7 +79,7 @@ export default function MeanReversionScreen() {
             <div className="panel panel-pad" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                 <I.vol style={{ width: 18, height: 18, color: 'var(--accent)' }} />
                 <div style={{ flex: 1, minWidth: 220 }}>
-                    <div style={{ fontWeight: 600, color: 'var(--tx-hi)' }}>Mi simulación de reversión a la media</div>
+                    <div style={{ fontWeight: 600, color: 'var(--tx-hi)' }}>Mi simulación de reversión a la media<InfoTip g="meanrev_estrategia" /></div>
                     <div className="cfg-desc" style={{ margin: 0 }}>
                         Billetera simulada propia (USDT). Compra por debajo de la media de 1h y vende al revertir,
                         de forma aislada de otros usuarios y del arbitraje.
@@ -112,12 +118,13 @@ export default function MeanReversionScreen() {
                 </div>
             )}
 
-            <div className="grid-3" style={{ gridTemplateColumns: 'repeat(5,1fr)' }}>
-                <Kpi label="Equity (USDT)" value={'$' + fmt(equity)} detail={`caja $${fmt(usdt || 0)} · desplegado $${fmt(deployed || 0)}`} />
-                <Kpi label="P&L realizado" value={signedMoney(realized)} cls={realized >= 0 ? 'pos' : 'neg'} />
-                <Kpi label="Posiciones abiertas" value={positions.length || (metrics?.open_positions ?? 0)} />
+            <div className="grid-3" style={{ gridTemplateColumns: 'repeat(3,1fr)' }}>
+                <Kpi label="Equity (USDT)" info="equity_meanrev" value={'$' + fmt(equity)} detail={`caja $${fmt(usdt || 0)} · invertido $${fmt(deployedValue || 0)} (mercado)`} />
+                <Kpi label="P&L no realizado" info="pnl_no_realizado" value={signedMoney(unrealized)} cls={unrealized >= 0 ? 'pos' : 'neg'} detail={`costo base $${fmt(deployedCost || 0)}`} />
+                <Kpi label="P&L realizado" info="pnl_realizado" value={signedMoney(realized)} cls={realized >= 0 ? 'pos' : 'neg'} />
+                <Kpi label="Posiciones abiertas" info="posiciones_abiertas" value={positions.length || (metrics?.open_positions ?? 0)} />
                 <Kpi label="Ejecuciones" value={executions} detail={`ventas ${meanRevTrades?.summary?.sells_total ?? 0}`} />
-                <Kpi label="Candidatas / snapshots" value={`${metrics?.candidates_detected ?? 0} / ${metrics?.snapshots_processed ?? 0}`} />
+                <Kpi label="Candidatas / snapshots" info="funnel_candidatos" value={`${metrics?.candidates_detected ?? 0} / ${metrics?.snapshots_processed ?? 0}`} />
             </div>
 
             <div className="panel">
@@ -131,20 +138,30 @@ export default function MeanReversionScreen() {
                 <div style={{ overflowX: 'auto' }}>
                     <table className="tbl">
                         <thead>
-                            <tr><th>Activo</th><th>Cantidad</th><th>Costo prom.</th><th>Costo base (USDT)</th><th>Abierta</th></tr>
+                            <tr><th>Activo</th><th>Cantidad</th><th>Costo prom.</th><Th info="costo_base">Costo base (USDT)</Th><Th info="precio_actual">Precio actual</Th><Th info="valor_mercado">Valor mercado</Th><Th info="pnl_no_realizado">P&L no real.</Th><th>Abierta</th></tr>
                         </thead>
                         <tbody>
                             {positions.length === 0 ? (
-                                <tr><td colSpan="5" className="empty-note">Sin posiciones abiertas. La caja está 100% en USDT.</td></tr>
-                            ) : positions.map((p) => (
+                                <tr><td colSpan="8" className="empty-note">Sin posiciones abiertas. La caja está 100% en USDT.</td></tr>
+                            ) : positions.map((p) => {
+                                const up = p.unrealized_pnl;
+                                const upCls = up == null ? '' : up >= 0 ? 'pos' : 'neg';
+                                return (
                                 <tr key={p.asset}>
                                     <td style={{ fontWeight: 600 }}>{p.asset}</td>
                                     <td className="mono">{fmt(p.quantity, 6)}</td>
                                     <td className="mono">${fmt(p.avg_cost, 6)}</td>
                                     <td className="mono">${fmt(p.cost_basis)}</td>
+                                    <td className="mono">{p.last_price != null ? '$' + fmt(p.last_price, 6) : '—'}</td>
+                                    <td className="mono" style={{ color: 'var(--tx-hi)' }}>{p.market_value != null ? '$' + fmt(p.market_value) : '—'}</td>
+                                    <td className={'mono ' + upCls}>
+                                        {up == null ? '—' : signedMoney(up)}
+                                        {p.unrealized_pct != null && <span style={{ color: 'var(--tx-lo)', fontSize: 11 }}> ({p.unrealized_pct >= 0 ? '+' : ''}{p.unrealized_pct.toFixed(2)}%)</span>}
+                                    </td>
                                     <td className="mono" style={{ color: 'var(--tx-lo)' }}>{relativeTime(p.opened_at_ms)}</td>
                                 </tr>
-                            ))}
+                                );
+                            })}
                         </tbody>
                     </table>
                 </div>
@@ -164,7 +181,7 @@ export default function MeanReversionScreen() {
                     <div style={{ overflowX: 'auto' }}>
                         <table className="tbl">
                             <thead>
-                                <tr><th>Hora</th><th>Símbolo</th><th>Lado</th><th>Motivo</th><th>Precio</th><th>Z-score</th><th>Vol %</th><th>P&L</th><th>Decisión</th></tr>
+                                <tr><th>Hora</th><th>Símbolo</th><th>Lado</th><Th info="motivo_senal">Motivo</Th><th>Precio</th><Th info="zscore">Z-score</Th><Th info="volatilidad_pct">Vol %</Th><th>P&L</th><Th info="estado_opp">Decisión</Th></tr>
                             </thead>
                             <tbody>
                                 {signals.length === 0 ? (
@@ -196,7 +213,7 @@ export default function MeanReversionScreen() {
                     <div style={{ overflowX: 'auto' }}>
                         <table className="tbl">
                             <thead>
-                                <tr><th>Hora</th><th>Símbolo</th><th>Lado</th><th>Motivo</th><th>Precio</th><th>Cantidad</th><th>Monto (USDT)</th><th>Fee</th><th>P&L</th></tr>
+                                <tr><th>Hora</th><th>Símbolo</th><th>Lado</th><Th info="motivo_senal">Motivo</Th><th>Precio</th><th>Cantidad</th><th>Monto (USDT)</th><th>Fee</th><th>P&L</th></tr>
                             </thead>
                             <tbody>
                                 {trades.length === 0 ? (
