@@ -54,7 +54,9 @@ return [
 
         'stack' => [
             'driver' => 'stack',
-            'channels' => explode(',', (string) env('LOG_STACK', 'single')),
+            // Por defecto el stack rota por hora con retención (canal "engine"),
+            // para que ningún worker pueda inflar laravel.log sin límite.
+            'channels' => explode(',', (string) env('LOG_STACK', 'engine')),
             'ignore_exceptions' => false,
         ],
 
@@ -121,6 +123,29 @@ return [
         'null' => [
             'driver' => 'monolog',
             'handler' => NullHandler::class,
+        ],
+
+        // Canal del worker de reversión a la media: rotación horaria, retención
+        // corta. Mantiene la última hora activa y poda las anteriores, sin
+        // inflar laravel.log.
+        'meanrev' => [
+            'driver' => 'custom',
+            'via' => App\Logging\HourlyRotatingLogger::class,
+            'path' => storage_path('logs/meanrev.log'),
+            'level' => env('MEANREV_LOG_LEVEL', 'debug'),
+            'hours' => env('MEANREV_LOG_HOURS', 6),
+            'name' => 'meanrev',
+        ],
+
+        // Canal genérico para engines de arbitraje (reutilizable por
+        // arbitrage:run / market:feed) con la misma estrategia horaria.
+        'engine' => [
+            'driver' => 'custom',
+            'via' => App\Logging\HourlyRotatingLogger::class,
+            'path' => storage_path('logs/engine.log'),
+            'level' => env('ENGINE_LOG_LEVEL', 'debug'),
+            'hours' => env('ENGINE_LOG_HOURS', 6),
+            'name' => 'engine',
         ],
 
         'emergency' => [

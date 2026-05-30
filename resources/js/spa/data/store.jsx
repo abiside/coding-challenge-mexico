@@ -194,6 +194,12 @@ export function NiftyProvider({ user, children }) {
         return res.data;
     }, []);
 
+    const resetProcess = useCallback(async () => {
+        const res = await api('/arbitrage/onboarding/reset', { method: 'POST' });
+        await Promise.all([loadSettings(), refreshFast(), refreshSlow()]);
+        return res;
+    }, [loadSettings, refreshFast, refreshSlow]);
+
     const addWallet = useCallback(async (body) => {
         await api('/arbitrage/wallets', { method: 'POST', body });
         await refreshSlow();
@@ -217,7 +223,7 @@ export function NiftyProvider({ user, children }) {
         user,
         simulation, wallets, trades, opportunities, market, engine, engineLive, settings, options,
         promotions, liveFeed, cycleFeed, error, busy, btcPrice,
-        actions: { startStop, saveSettings, addWallet, removeWallet, refreshFast, refreshSlow, loadSettings, setError },
+        actions: { startStop, saveSettings, addWallet, removeWallet, resetProcess, refreshFast, refreshSlow, loadSettings, setError },
     };
 
     return <NiftyContext.Provider value={value}>{children}</NiftyContext.Provider>;

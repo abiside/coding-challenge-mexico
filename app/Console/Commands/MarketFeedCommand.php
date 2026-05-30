@@ -189,7 +189,11 @@ class MarketFeedCommand extends Command
     {
         $publishers = [];
 
-        if ((bool) config('marketdata.publisher.log_messages', false) || ! $this->option('quiet-logs')) {
+        // Logueo por-mensaje: OPT-IN explícito. Antes estaba activo por defecto
+        // (salvo --quiet-logs) y generaba GB de logs (un info por cada tick y
+        // cada orderbook de cada exchange/símbolo). Ahora solo se activa con
+        // MARKET_FEED_LOG_MESSAGES=true.
+        if ((bool) config('marketdata.publisher.log_messages', false)) {
             $publishers[] = new LoggerMarketMessagePublisher($logger);
         }
 

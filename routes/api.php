@@ -37,6 +37,7 @@ Route::prefix('v1')->group(function (): void {
 
         Route::prefix('arbitrage')->group(function (): void {
             Route::post('/onboarding/demo', [OnboardingController::class, 'demo']);
+            Route::post('/onboarding/reset', [OnboardingController::class, 'reset']);
 
             Route::get('/settings', [SettingsController::class, 'show']);
             Route::put('/settings', [SettingsController::class, 'update']);

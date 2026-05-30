@@ -1,0 +1,125 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Arbitrage\MeanReversion\Execution;
+
+/**
+ * Lleva el costo base (cost basis) por activo, que el `WalletManager` no
+ * conoce (solo guarda balances). Necesario para calcular P&L realizado en las
+ * ventas y para evaluar take-profit / stop-loss contra el precio promedio de
+ * entrada.
+ */
+final class PositionBook
+{
+    /**
+     * @var array<string, array{qty: float, cost: float, opened_at_ms: int}>
+     *   asset => { cantidad, costo total en USDT, primer apertura }
+     */
+    private array $positions = [];
+
+    /**
+     * Registra una compra: aumenta cantidad y costo base (USDT gastado, fee
+     * incluido).
+     */
+    public function applyBuy(string $asset, float $quantity, float $costUsdt, int $nowMs): void
+    {
+        $asset = strtoupper($asset);
+        if ($quantity <= 0.0) {
+            return;
+        }
+
+        $current = $this->positions[$asset] ?? ['qty' => 0.0, 'cost' => 0.0, 'opened_at_ms' => $nowMs];
+        $current['qty'] += $quantity;
+        $current['cost'] += $costUsdt;
+        if (($this->positions[$asset]['qty'] ?? 0.0) <= 0.0) {
+            $current['opened_at_ms'] = $nowMs;
+        }
+
+        $this->positions[$asset] = $current;
+    }
+
+    /**
+     * Registra una venta: reduce cantidad y costo base proporcionalmente al
+     * costo promedio, y devuelve el P&L realizado (proceeds netos - costo de lo
+     * vendido).
+     */
+    public function applySell(string $asset, float $quantity, float $proceedsUsdt): float
+    {
+        $asset = strtoupper($asset);
+        $current = $this->positions[$asset] ?? null;
+        if ($current === null || $current['qty'] <= 0.0 || $quantity <= 0.0) {
+            return 0.0;
+        }
+
+        $sellQty = min($quantity, $current['qty']);
+        $avgCost = $current['cost'] / $current['qty'];
+        $costOfSold = $avgCost * $sellQty;
+        $realizedPnl = $proceedsUsdt - $costOfSold;
+
+        $current['qty'] -= $sellQty;
+        $current['cost'] -= $costOfSold;
+        if ($current['qty'] <= 1e-12) {
+            unset($this->positions[$asset]);
+        } else {
+            $this->positions[$asset] = $current;
+        }
+
+        return $realizedPnl;
+    }
+
+    public function quantity(string $asset): float
+    {
+        return $this->positions[strtoupper($asset)]['qty'] ?? 0.0;
+    }
+
+    public function costBasis(string $asset): float
+    {
+        return $this->positions[strtoupper($asset)]['cost'] ?? 0.0;
+    }
+
+    /** Costo promedio por unidad (USDT) o 0 si no hay posición. */
+    public function avgCost(string $asset): float
+    {
+        $pos = $this->positions[strtoupper($asset)] ?? null;
+        if ($pos === null || $pos['qty'] <= 0.0) {
+            return 0.0;
+        }
+
+        return $pos['cost'] / $pos['qty'];
+    }
+
+    public function openedAtMs(string $asset): ?int
+    {
+        return $this->positions[strtoupper($asset)]['opened_at_ms'] ?? null;
+    }
+
+    /** Suma del costo base desplegado en todas las posiciones (USDT). */
+    public function totalCostBasis(): float
+    {
+        $total = 0.0;
+        foreach ($this->positions as $pos) {
+            $total += $pos['cost'];
+        }
+
+        return $total;
+    }
+
+    public function openCount(): int
+    {
+        return count($this->positions);
+    }
+
+    public function hasPosition(string $asset): bool
+    {
+        return ($this->positions[strtoupper($asset)]['qty'] ?? 0.0) > 0.0;
+    }
+
+    /**
+     * @return array<int, string>  activos con posición abierta
+     */
+    public function heldAssets(): array
+    {
+        return array_keys($this->positions);
+    }
+}

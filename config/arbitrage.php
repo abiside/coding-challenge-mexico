@@ -245,6 +245,28 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Retención de historial (purga de series de tiempo)
+    |--------------------------------------------------------------------------
+    |
+    | El engine en modo simulación/demo genera un volumen alto y continuo de
+    | registros (oportunidades, trades, evaluaciones, eventos). Para mantener la
+    | base acotada, `arbitrage:prune` borra todo lo anterior a `hours` horas en
+    | las tablas de series de tiempo. NO toca configuración ni estado
+    | (estrategias, settings, wallets, runs, exchanges, usuarios).
+    |
+    | El borrado es por lotes (`chunk`) para no bloquear con transacciones
+    | gigantes. Se agenda en routes/console.php.
+    |
+    */
+
+    'retention' => [
+        'enabled' => (bool) env('ARBITRAGE_RETENTION_ENABLED', true),
+        'hours' => (int) env('ARBITRAGE_RETENTION_HOURS', 8),
+        'chunk' => (int) env('ARBITRAGE_RETENTION_CHUNK', 5000),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Arbitraje triangular (ciclos multi-pata)
     |--------------------------------------------------------------------------
     |

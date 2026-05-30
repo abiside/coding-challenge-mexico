@@ -14,6 +14,17 @@ Schedule::command('arbitrage:optimize')
     ->onOneServer()
     ->runInBackground();
 
+// Retención: purga el historial de series de tiempo anterior a las últimas N
+// horas (config arbitrage.retention.hours, 8 por defecto) para mantener la base
+// acotada durante simulaciones/demo continuas.
+if ((bool) config('arbitrage.retention.enabled', true)) {
+    Schedule::command('arbitrage:prune')
+        ->cron((string) env('ARBITRAGE_PRUNE_CRON', '0 * * * *'))
+        ->withoutOverlapping()
+        ->onOneServer()
+        ->runInBackground();
+}
+
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');

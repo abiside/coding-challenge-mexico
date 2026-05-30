@@ -200,6 +200,39 @@ body {
   box-shadow: 0 4px 14px -7px rgba(var(--accent-rgb), 0.45);
 }
 .btn.primary:hover { filter: brightness(1.08); }
+.btn.danger {
+  background: var(--loss-dim); border: 1px solid rgba(255,71,111,0.4); color: #ffc3cf;
+}
+.btn.danger:hover { background: rgba(255,71,111,0.2); border-color: rgba(255,71,111,0.6); color: #fff; }
+
+/* Pill convertido en botón (p. ej. "Modo Demo" abre el reinicio). */
+.pill-btn { cursor: pointer; font-family: var(--mono); transition: filter 0.12s, box-shadow 0.12s; }
+.pill-btn:hover { filter: brightness(1.12); box-shadow: 0 0 0 1px rgba(255,57,168,0.35); }
+
+/* ============================================================
+   Modal de confirmación (centrado) — reinicio del proceso
+   ============================================================ */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 120;
+  background: rgba(4,5,8,0.74); backdrop-filter: blur(6px);
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+  animation: fade 0.16s ease;
+}
+.modal-card {
+  width: 440px; max-width: 94vw; background: var(--bg-1);
+  border: 1px solid var(--line-strong); border-radius: 16px; padding: 26px 26px 22px;
+  box-shadow: 0 30px 80px -30px rgba(0,0,0,0.85);
+  animation: modalIn 0.2s cubic-bezier(0.16,1,0.3,1);
+}
+@keyframes modalIn { from { transform: translateY(10px) scale(0.98); opacity: 0; } to { transform: none; opacity: 1; } }
+.modal-icon {
+  width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center; margin-bottom: 14px;
+}
+.modal-icon.danger { background: var(--loss-dim); color: #ff6b8a; border: 1px solid rgba(255,71,111,0.3); }
+.modal-title { font-size: 18px; font-weight: 700; color: var(--tx-hi); margin: 0 0 8px; }
+.modal-text { font-size: 13.5px; line-height: 1.55; color: var(--tx-mid); margin: 0 0 8px; }
+.modal-text.danger-text { color: #ffb3c1; font-weight: 600; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
 
 /* Demo banner */
 .demo-banner {
@@ -322,6 +355,13 @@ body {
 .chart-delta.down {
   color: #ff6b9d; background: rgba(255,57,168,0.14); border: 1px solid rgba(255,57,168,0.45);
   box-shadow: 0 0 8px rgba(255,57,168,0.25);
+}
+/* % de un champion previo: oculto por defecto, se revela al pasar el mouse por
+   su zona del bloque con un fade-in suave. */
+.chart-delta.transient { animation: chartDeltaIn 140ms ease-out; }
+@keyframes chartDeltaIn {
+  from { opacity: 0; transform: translate(-50%, -42%); }
+  to   { opacity: 1; transform: translate(-50%, -50%); }
 }
 
 /* Indicador puntual (hover) */

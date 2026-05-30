@@ -3,7 +3,30 @@ import { useState } from 'react';
 import { useNifty } from '../data/store';
 import { I } from '../nifty/icons';
 import { Lat, Toggle, NumField } from '../nifty/widgets';
+import { ResetProcessModal } from '../nifty/ResetModal';
 import { exLabel, exColor, signedMoney, relativeTime, discardLabel, fmt } from '../nifty/format';
+
+/* Zona de peligro: reinicia el proceso (borra toda la data + challengers y
+   restaura wallets). Pide confirmación porque es irreversible. */
+function DangerZone() {
+    const [open, setOpen] = useState(false);
+    const [done, setDone] = useState(false);
+
+    return (
+        <div className="panel panel-pad" style={{ borderLeft: '3px solid var(--loss)' }}>
+            <div className="sec-title"><h3>Zona de peligro</h3><span className="ln" /></div>
+            <div className="cfg-row" style={{ borderBottom: 'none', marginTop: 4 }}>
+                <div className="cfg-info">
+                    <div className="cfg-name">Reiniciar el proceso actual</div>
+                    <div className="cfg-desc">Borra toda la data de transacciones (oportunidades y trades) y reinicia los challengers y el champion del autopilot. Las wallets vuelven a su saldo inicial. Todo vuelve a empezar y no se puede deshacer.</div>
+                </div>
+                <button className="btn danger" onClick={() => { setDone(false); setOpen(true); }}>Reiniciar proceso</button>
+            </div>
+            {done && <div className="alert ok" style={{ marginTop: 12, marginBottom: 0 }}><span className="ad" />Proceso reiniciado: data de transacciones y challengers borrados, wallets restauradas.</div>}
+            <ResetProcessModal open={open} onClose={(ok) => { setOpen(false); if (ok) setDone(true); }} />
+        </div>
+    );
+}
 
 /* Panel del modo simulación: inyecta jitter de precios para forzar spreads
    rentables. El toggle + el % máximo persisten en ArbitrageSetting y disparan
@@ -211,6 +234,8 @@ export default function EngineScreen() {
             </div>
 
             <SimulationPanel />
+
+            <DangerZone />
 
             <CyclesPanel cycleFeed={cycleFeed} />
 

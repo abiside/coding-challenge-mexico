@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { I } from './nifty/icons';
 import { useNifty } from './data/store';
 import { OppDrawer } from './nifty/OppDrawer';
+import { ResetProcessModal } from './nifty/ResetModal';
 import DashboardScreen from './screens/Dashboard';
 import MarketScreen from './screens/Market';
 import OppsScreen from './screens/Opportunities';
@@ -99,6 +100,7 @@ function Header({ active, user, onLogout }) {
     const avgLat = oks.length ? Math.round(oks.reduce((s, c) => s + c.age_ms, 0) / oks.length) : null;
     const paused = !simulation.active;
     const [now, setNow] = useState(() => new Date());
+    const [resetOpen, setResetOpen] = useState(false);
     useEffect(() => {
         const t = setInterval(() => setNow(new Date()), 1000);
         return () => clearInterval(t);
@@ -111,7 +113,11 @@ function Header({ active, user, onLogout }) {
                 <div className="crumb">{m.crumb}</div>
             </div>
             <span className={'pill ' + (paused ? 'demo' : 'live')}><span className="dot" />{paused ? 'Engine pausado' : 'Engine activo'}</span>
-            <span className="pill demo"><span className="dot" />Modo Demo</span>
+            <button type="button" className="pill demo pill-btn" onClick={() => setResetOpen(true)}
+                title="Reiniciar el proceso · borra toda la data y challengers">
+                <span className="dot" />Modo Demo
+            </button>
+            <ResetProcessModal open={resetOpen} onClose={() => setResetOpen(false)} />
             <div className="hdr-stats">
                 <div className="hstat"><span className="k">Exchanges</span><span className="v good">{online} / {conns.length || market.rows?.length || 0}</span></div>
                 <div className="hdr-divider" />

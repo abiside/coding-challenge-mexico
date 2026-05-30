@@ -92,6 +92,9 @@ export function BigChart({ data, times, steps, markers = [], domain }) {
 
     const wrapRef = useRef(null);
     const [hover, setHover] = useState(null);
+    // Índice del bloque de champion previo sobre el que está el cursor (para
+    // revelar su % bajo demanda). null = ninguno.
+    const [hoverDelta, setHoverDelta] = useState(null);
 
     // Morph suave entre snapshots: la curva se desliza a su nueva forma en vez
     // de saltar de golpe cuando el REST trae nuevos trades. Solo se reanima al
@@ -195,7 +198,8 @@ export function BigChart({ data, times, steps, markers = [], domain }) {
     const promoDeltas = [];
     for (let j = 1; j < ascMarks.length; j++) {
         const startX = Xt(ascMarks[j].ms);
-        const endX = j + 1 < ascMarks.length ? Xt(ascMarks[j + 1].ms) : rightX;
+        const isCurrent = j + 1 >= ascMarks.length;
+        const endX = isCurrent ? rightX : Xt(ascMarks[j + 1].ms);
         const prevAvg = Number(ascMarks[j - 1].avg_profit) || 0;
         const curAvg = Number(ascMarks[j].avg_profit) || 0;
         const pct = Math.abs(prevAvg) > 1e-6 ? ((curAvg - prevAvg) / Math.abs(prevAvg)) * 100 : null;
@@ -203,6 +207,11 @@ export function BigChart({ data, times, steps, markers = [], domain }) {
             leftPct: (((startX + endX) / 2) / W) * 100,
             pct,
             up: curAvg >= prevAvg,
+            // El bloque del ciclo actual muestra su % siempre; los de champions
+            // previos solo al pasar el mouse por su zona (x0..x1 en coords SVG).
+            current: isCurrent,
+            x0: Math.min(startX, endX),
+            x1: Math.max(startX, endX),
         });
     }
 
@@ -222,6 +231,8 @@ export function BigChart({ data, times, steps, markers = [], domain }) {
         const rect = el.getBoundingClientRect();
         const svgX = ((e.clientX - rect.left) / rect.width) * W;
         setHover(nearestIdx(svgX));
+        const di = promoDeltas.findIndex((b) => !b.current && svgX >= b.x0 && svgX < b.x1);
+        setHoverDelta(di >= 0 ? di : null);
     };
 
     const hv = hover != null ? {
@@ -233,7 +244,7 @@ export function BigChart({ data, times, steps, markers = [], domain }) {
     } : null;
 
     return (
-        <div className="chart-canvas" ref={wrapRef} onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
+        <div className="chart-canvas" ref={wrapRef} onMouseMove={onMove} onMouseLeave={() => { setHover(null); setHoverDelta(null); }}>
             <svg className="chart-svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
                 <defs>
                     <linearGradient id="cstroke" x1="0" y1="0" x2="1" y2="0">
@@ -292,12 +303,14 @@ export function BigChart({ data, times, steps, markers = [], domain }) {
             ))}
 
             {promoDeltas.map((b, i) => (
-                <span key={'pd' + i} className={'chart-delta ' + (b.up ? 'up' : 'down')} style={{ left: b.leftPct + '%' }}
-                    title="Promedio por trade del champion vs. el promedio del anterior">
-                    {b.pct == null
-                        ? (b.up ? '▲' : '▼')
-                        : (b.up ? '▲ ' : '▼ ') + (b.pct >= 0 ? '+' : '') + (Math.abs(b.pct) >= 1000 ? Math.round(b.pct) : b.pct.toFixed(1)) + '%'}
-                </span>
+                (b.current || hoverDelta === i) && (
+                    <span key={'pd' + i} className={'chart-delta ' + (b.up ? 'up' : 'down') + (b.current ? ' current' : ' transient')} style={{ left: b.leftPct + '%' }}
+                        title="Promedio por trade del champion vs. el promedio del anterior">
+                        {b.pct == null
+                            ? (b.up ? '▲' : '▼')
+                            : (b.up ? '▲ ' : '▼ ') + (b.pct >= 0 ? '+' : '') + (Math.abs(b.pct) >= 1000 ? Math.round(b.pct) : b.pct.toFixed(1)) + '%'}
+                    </span>
+                )
             ))}
 
             {hv && (

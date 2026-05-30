@@ -76,6 +76,15 @@ class DemoProvisioner
         return $setting;
     }
 
+    /**
+     * Restaura las wallets del usuario a su saldo inicial de demo (idempotente).
+     * Útil para el reinicio "todo a empezar".
+     */
+    public function resetWallets(int $userId): void
+    {
+        $this->provisionWallets($userId);
+    }
+
     private function provisionWallets(int $userId): void
     {
         $exchanges = array_values((array) config('marketdata.exchanges', []));
