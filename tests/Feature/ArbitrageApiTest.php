@@ -113,9 +113,10 @@ class ArbitrageApiTest extends TestCase
         $nowMs = (int) (microtime(true) * 1000);
         $weekMs = 604_800_000;
 
-        // Trade anterior a la ventana semanal => entra como offset (base), no se
-        // grafica pero preserva el nivel acumulado.
-        Trade::create($this->tradeRowAt((int) $user->id, 100.0, 'old', $nowMs - $weekMs - 60_000));
+        // Trade muy anterior a la ventana semanal (>1 bucket de 1h antes del
+        // borde, que se alinea a época) => entra como offset (base), no se grafica
+        // pero preserva el nivel acumulado.
+        Trade::create($this->tradeRowAt((int) $user->id, 100.0, 'old', $nowMs - $weekMs - 7_200_000));
         // Trades dentro de la ventana => acumulado 100->110->106->112.
         Trade::create($this->tradeRowAt((int) $user->id, 10.0, 'w1', $nowMs - 30_000));
         Trade::create($this->tradeRowAt((int) $user->id, -4.0, 'w2', $nowMs - 20_000));

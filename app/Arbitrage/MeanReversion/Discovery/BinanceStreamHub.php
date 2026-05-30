@@ -17,7 +17,7 @@ use Throwable;
 /**
  * Conexión única al combined stream de Binance con suscripciones DINÁMICAS.
  *
- * Mantiene siempre activo `!ticker@arr` (discovery de todo el mercado) y
+ * Mantiene siempre activo `!miniTicker@arr` (discovery de todo el mercado) y
  * permite abrir/cerrar en caliente los streams de profundidad por símbolo
  * (`<sym>@depthN@speed`) enviando frames SUBSCRIBE/UNSUBSCRIBE sobre la misma
  * conexión. Reconecta con backoff y reenvía el set de streams vigente, de modo
@@ -28,6 +28,15 @@ use Throwable;
  */
 final class BinanceStreamHub
 {
+    /**
+     * Stream de discovery de todo el mercado. Usamos !miniTicker@arr (no
+     * !ticker@arr): el ticker completo genera un frame de cientos de KB que
+     * Binance no entrega de forma fiable por esta conexión, mientras que el
+     * miniTicker (~8KB) llega cada 1s y ya trae símbolo (`s`) y last price
+     * (`c`), que es todo lo que necesita el ranking de volatilidad.
+     */
+    private const DISCOVERY_STREAM = '!miniTicker@arr';
+
     private ?WebSocketConnection $connection = null;
 
     private bool $stopped = false;
@@ -191,7 +200,7 @@ final class BinanceStreamHub
                 });
 
                 // Discovery siempre activo + reenvío del set de profundidad vigente.
-                $this->sendControl('SUBSCRIBE', ['!ticker@arr']);
+                $this->sendControl('SUBSCRIBE', [self::DISCOVERY_STREAM]);
                 $streams = array_map(fn (string $s): string => $this->depthStream($s), array_keys($this->activeSymbols));
                 if ($streams !== []) {
                     $this->sendControl('SUBSCRIBE', $streams);
@@ -247,7 +256,7 @@ final class BinanceStreamHub
 
         $nowMs = (int) (microtime(true) * 1000);
 
-        if ($stream === '!ticker@arr') {
+        if ($stream === self::DISCOVERY_STREAM) {
             if ($this->onAllTickers !== null) {
                 ($this->onAllTickers)($data, $nowMs);
             }

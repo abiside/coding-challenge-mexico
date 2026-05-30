@@ -4,19 +4,24 @@ declare(strict_types=1);
 
 namespace App\Arbitrage\MeanReversion\Discovery;
 
-use App\Arbitrage\Execution\WalletManager;
+use Closure;
 use Psr\Log\LoggerInterface;
 
 /**
  * Decide qué streams de profundidad mantener abiertos y los reconcilia contra
  * el set activo del hub.
  *
- *   deseado = monedas_con_inventario  ∪  top_N_volátiles  (capado a max_subs)
+ *   deseado = inventario_de_TODOS_los_usuarios  ∪  top_N_volátiles  (capado)
+ *
+ * La discovery (ranking) y los books son COMPARTIDOS por todos los engines de
+ * usuario; por eso el inventario "obligatorio" es la unión de las posiciones de
+ * cada sesión activa (lo provee un resolver inyectado por el worker).
  *
  * Invariantes:
- *  - Nunca cierra el stream de una moneda con saldo (se necesita para vender /
- *    stop-loss). Las monedas en inventario siempre entran al deseado, incluso
- *    por encima del tope de suscripciones.
+ *  - Nunca cierra el stream de una moneda con saldo de algún usuario (se
+ *    necesita para vender / stop-loss).
+ *  - Si no hay consumidores (ninguna sesión activa), no abre streams de
+ *    profundidad (solo se mantiene la discovery !miniTicker@arr).
  *  - Histéresis: una moneda recién suscrita no se cierra antes de
  *    `minSubscriptionMs`, para evitar churn de sockets.
  */
@@ -25,25 +30,33 @@ final class SubscriptionManager
     /** @var array<string, int>  símbolo => epoch ms en que se suscribió */
     private array $subscribedAtMs = [];
 
+    /** @var Closure(): array<string, bool> */
+    private readonly Closure $heldSymbolsResolver;
+
+    /**
+     * @param  callable(): array<string, bool>  $heldSymbolsResolver  unión de
+     *         símbolos con inventario ("ASSET/QUOTE" => true) de todas las sesiones.
+     */
     public function __construct(
         private readonly VolatilityRanker $ranker,
-        private readonly WalletManager $wallets,
+        callable $heldSymbolsResolver,
         private readonly BinanceStreamHub $hub,
         private readonly LoggerInterface $logger,
-        private readonly string $exchange,
-        private readonly string $quoteAsset,
         private readonly int $topN,
         private readonly int $maxSubscriptions,
         private readonly int $minSubscriptionMs,
         private readonly bool $diagnostics = false,
-        private readonly float $dustThreshold = 1e-8,
     ) {
+        $this->heldSymbolsResolver = Closure::fromCallable($heldSymbolsResolver);
     }
 
-    public function reconcile(int $nowMs): void
+    public function reconcile(int $nowMs, bool $hasConsumers = true): void
     {
-        $held = $this->heldSymbols();
-        $movers = $this->ranker->topN($this->topN);
+        $held = ($this->heldSymbolsResolver)();
+
+        // Sin consumidores: no abrir profundidad; el inventario debería estar
+        // vacío también, pero respetamos held por seguridad (no cerrar con saldo).
+        $movers = $hasConsumers ? $this->ranker->topN($this->topN) : [];
 
         // Inventario primero (obligatorio), luego rellenar con movers hasta el tope.
         $desired = $held;
@@ -102,29 +115,8 @@ final class SubscriptionManager
                 'removed' => $toRemove,
                 'active' => count($this->hub->activeSymbols()),
                 'connected' => $this->hub->isConnected(),
+                'consumers' => $hasConsumers,
             ]);
         }
-    }
-
-    /**
-     * Símbolos con saldo de inventario (> dust), mapeados a par contra la quote.
-     *
-     * @return array<string, bool>
-     */
-    private function heldSymbols(): array
-    {
-        $held = [];
-        $assets = $this->wallets->snapshot()[strtolower($this->exchange)] ?? [];
-        foreach ($assets as $asset => $amount) {
-            $asset = strtoupper((string) $asset);
-            if ($asset === strtoupper($this->quoteAsset)) {
-                continue;
-            }
-            if ((float) $amount > $this->dustThreshold) {
-                $held[$asset.'/'.strtoupper($this->quoteAsset)] = true;
-            }
-        }
-
-        return $held;
     }
 }

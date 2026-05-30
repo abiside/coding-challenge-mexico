@@ -1,7 +1,7 @@
 /* NIFTY — Auth (login / registro) con el design system Nifty. */
 import { useState } from 'react';
 import { api, setToken } from '../client';
-import { I } from '../nifty/icons';
+import { BrandLogo } from '../nifty/BrandLogo';
 import AuthBackground from './AuthBackground';
 
 export default function Auth({ onAuthenticated }) {
@@ -33,13 +33,7 @@ export default function Auth({ onAuthenticated }) {
         <div className="auth-wrap">
             <AuthBackground />
             <div className="panel panel-pad auth-card hud">
-                <div className="brand">
-                    <div className="brand-mark"><I.bolt style={{ width: 16, height: 16, color: '#0a0710' }} /></div>
-                    <div>
-                        <div className="brand-name">Nifty</div>
-                        <div className="brand-sub">Arbitrage Engine</div>
-                    </div>
-                </div>
+                <BrandLogo tagline="Arbitrage Engine" center height={30} style={{ paddingBottom: 26 }} />
                 <h1 className="auth-title">{mode === 'login' ? 'Inicia sesión' : 'Crea tu cuenta'}</h1>
                 <p className="auth-sub">{mode === 'login' ? 'Accede a tu consola de arbitraje simulado.' : 'Configura tu propio motor de arbitraje multi-exchange.'}</p>
 

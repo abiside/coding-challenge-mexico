@@ -85,6 +85,15 @@ export function NiftyProvider({ user, children }) {
     // Feed en vivo de ciclos triangulares: ciclos detectados, evaluados y
     // ejecutados por el `CycleEngine`. Independiente del feed de opps 2-patas.
     const [cycleFeed, enqueueCycle] = usePacedFeed(30);
+    // Histórico REST de ciclos triangulares + resumen (para no depender solo del
+    // feed en vivo y mostrar estado al cargar la página).
+    const [cycles, setCycles] = useState([]);
+    const [cyclesSummary, setCyclesSummary] = useState(null);
+    // Estrategia de reversión a la media (worker meanrev:run, billetera global).
+    const [meanRev, setMeanRev] = useState({ enabled: false, running: false, metrics: null, recent_signals: [] });
+    const [meanRevTrades, setMeanRevTrades] = useState({ data: [], summary: null });
+    const [meanRevLive, setMeanRevLive] = useState(null);
+    const [meanRevFeed, enqueueMeanRev] = usePacedFeed(30);
     const [error, setError] = useState(null);
     const [busy, setBusy] = useState(false);
     const channelRef = useRef(null);
@@ -104,18 +113,25 @@ export function NiftyProvider({ user, children }) {
 
     const refreshSlow = useCallback(async () => {
         try {
-            const [simRes, walletsRes, tradesRes, oppsRes, promoRes] = await Promise.all([
+            const [simRes, walletsRes, tradesRes, oppsRes, cyclesRes, promoRes, mrRes, mrTradesRes] = await Promise.all([
                 api('/arbitrage/simulation'),
                 api('/arbitrage/wallets'),
                 api('/arbitrage/trades?limit=200'),
                 api('/arbitrage/opportunities?limit=120'),
+                api('/arbitrage/cycles?limit=80'),
                 api('/arbitrage/strategies/promotions'),
+                api('/meanrev/overview'),
+                api('/meanrev/trades?limit=100'),
             ]);
             setSimulation(simRes);
             setWallets(walletsRes.data || []);
             setTrades(tradesRes.data || []);
             setOpportunities(oppsRes.data || []);
+            setCycles(cyclesRes.data || []);
+            setCyclesSummary(cyclesRes.summary || null);
             setPromotions(promoRes.data || []);
+            setMeanRev(mrRes);
+            setMeanRevTrades({ data: mrTradesRes.data || [], summary: mrTradesRes.summary || null });
         } catch (err) {
             setError(err.message);
         }
@@ -145,8 +161,11 @@ export function NiftyProvider({ user, children }) {
         const token = getToken();
         if (!token || !user) return undefined;
         let channel;
+        let meanRevChannel;
+        let echoRef;
         try {
             const echo = getEcho(token);
+            echoRef = echo;
             channel = echo.private(`arbitrage.user.${user.id}`);
             channel.listen('.arbitrage.opportunity.processed', (payload) => {
                 // _flashAt se sella al revelar (en la cola), no al llegar.
@@ -163,6 +182,15 @@ export function NiftyProvider({ user, children }) {
                 setEngineLive({ ...payload, _receivedAt: Date.now() });
             });
             channelRef.current = channel;
+
+            // Canal PRIVADO de la sesión de reversión a la media del usuario.
+            meanRevChannel = echo.private(`meanrev.user.${user.id}`);
+            meanRevChannel.listen('.meanrev.signal.processed', (payload) => {
+                enqueueMeanRev({ ...payload, _flashAt: Date.now() });
+            });
+            meanRevChannel.listen('.meanrev.engine.metrics', (payload) => {
+                setMeanRevLive({ ...payload, _receivedAt: Date.now() });
+            });
         } catch (err) {
             setError(`Realtime: ${err.message}`);
         }
@@ -172,8 +200,13 @@ export function NiftyProvider({ user, children }) {
                 try { channel.stopListening('.arbitrage.cycle.processed'); } catch { /* noop */ }
                 try { channel.stopListening('.arbitrage.engine.metrics'); } catch { /* noop */ }
             }
+            if (meanRevChannel) {
+                try { meanRevChannel.stopListening('.meanrev.signal.processed'); } catch { /* noop */ }
+                try { meanRevChannel.stopListening('.meanrev.engine.metrics'); } catch { /* noop */ }
+                try { echoRef?.leaveChannel(`private-meanrev.user.${user.id}`); } catch { /* noop */ }
+            }
         };
-    }, [user, enqueueOpp, enqueueCycle]);
+    }, [user, enqueueOpp, enqueueCycle, enqueueMeanRev]);
 
     const startStop = useCallback(async () => {
         setBusy(true);
@@ -187,6 +220,20 @@ export function NiftyProvider({ user, children }) {
             setBusy(false);
         }
     }, [simulation.active, refreshSlow]);
+
+    const meanRevStartStop = useCallback(async () => {
+        setBusy(true);
+        setError(null);
+        try {
+            await api(`/meanrev/${meanRev.active ? 'stop' : 'start'}`, { method: 'POST' });
+            if (meanRev.active) setMeanRevLive(null);
+            await refreshSlow();
+        } catch (err) {
+            setError(err.message);
+        } finally {
+            setBusy(false);
+        }
+    }, [meanRev.active, refreshSlow]);
 
     const saveSettings = useCallback(async (patch) => {
         const res = await api('/arbitrage/settings', { method: 'PUT', body: patch });
@@ -222,8 +269,9 @@ export function NiftyProvider({ user, children }) {
     const value = {
         user,
         simulation, wallets, trades, opportunities, market, engine, engineLive, settings, options,
-        promotions, liveFeed, cycleFeed, error, busy, btcPrice,
-        actions: { startStop, saveSettings, addWallet, removeWallet, resetProcess, refreshFast, refreshSlow, loadSettings, setError },
+        promotions, liveFeed, cycleFeed, cycles, cyclesSummary, error, busy, btcPrice,
+        meanRev, meanRevTrades, meanRevLive, meanRevFeed,
+        actions: { startStop, meanRevStartStop, saveSettings, addWallet, removeWallet, resetProcess, refreshFast, refreshSlow, loadSettings, setError },
     };
 
     return <NiftyContext.Provider value={value}>{children}</NiftyContext.Provider>;

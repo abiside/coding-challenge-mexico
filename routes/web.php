@@ -2,9 +2,8 @@
 
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', function () {
-    return view('welcome');
-});
+// La ruta base apunta a la consola (SPA multi-usuario).
+Route::redirect('/', '/console');
 
 Route::view('/app', 'app');
 

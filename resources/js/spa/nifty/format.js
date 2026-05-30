@@ -231,6 +231,62 @@ export function normalizeOpportunity(input) {
     };
 }
 
+const CYCLE_STATUS = {
+    execute: { status: 'exec', label: 'Ejecutado' },
+    reject: { status: 'reject', label: 'Rechazado' },
+    ignore: { status: 'expired', label: 'Ignorado' },
+};
+
+/* Normaliza un ciclo triangular a una forma única, aceptando tanto el payload
+   en vivo del WS ({ decision, cycle:{...}, simulation:{...}, published_at })
+   como la fila plana persistida del REST (triangular_opportunities). */
+export function normalizeCycle(input) {
+    const isLive = !!input.cycle;
+    const c = isLive ? input.cycle : input;
+    const sim = isLive ? input.simulation : null;
+    const decision = input.decision || c.decision || 'reject';
+    const map = CYCLE_STATUS[decision] || CYCLE_STATUS.reject;
+    const startAsset = c.start_asset || '';
+    const detectedMs = Number(c.detected_at_ms)
+        || (input.published_at ? Date.parse(input.published_at) : null)
+        || (input.created_at ? Date.parse(input.created_at) : Date.now());
+    const realized = isLive
+        ? (sim ? Number(sim.realized_pnl) : null)
+        : (input.realized_pnl != null ? Number(input.realized_pnl) : null);
+    const reasons = Array.isArray(input.reasons) ? input.reasons : (Array.isArray(c.reasons) ? c.reasons : []);
+
+    return {
+        id: isLive ? (input.published_at || `${c.label}-${detectedMs}`) : input.id,
+        detectedMs,
+        time: timeFromMs(detectedMs),
+        label: c.label || '—',
+        startAsset,
+        quoteDecimals: startAsset === 'USDT' || startAsset === 'USD' ? 2 : 6,
+        grossPct: (Number(c.gross_spread_bps) || 0) / 100,
+        netProfit: Number(c.net_profit) || 0,
+        margin: (Number(c.net_margin) || 0) * 100,
+        realized,
+        decision,
+        status: map.status,
+        statusLabel: map.label,
+        reason: reasons.length ? reasons.join(' · ') : '',
+        _flashAt: input._flashAt,
+    };
+}
+
+/* Une feed en vivo (WS) + histórico REST de ciclos, deduplicando por id. */
+export function mergeCycles(live, history, cap = 60) {
+    const seen = new Set();
+    const out = [];
+    for (const it of [...(live || []), ...(history || [])]) {
+        if (it == null) continue;
+        if (seen.has(it.id)) continue;
+        seen.add(it.id);
+        out.push(it);
+    }
+    return out.slice(0, cap);
+}
+
 /* --- KPIs del dashboard a partir de trades reales --- */
 function tradeVolumeQuote(t) {
     const fills = t.fills || [];
@@ -290,7 +346,7 @@ export function deriveWinRateSpark(trades, win = 12) {
 }
 
 /* --- Serie acumulada de P&L por ventana de tiempo --- */
-const TF_WINDOW_MS = { h24: 3600e3, day: 86400e3, week: 604800e3 };
+const TF_WINDOW_MS = { m15: 900e3, h1: 3600e3, h4: 14400e3, h24: 3600e3, day: 86400e3, week: 604800e3 };
 
 // Serie de P&L acumulado con marcas de tiempo por punto, para alimentar la
 // gráfica grande con ejes (X temporal) y tooltips. `step` es el P&L aportado
@@ -387,12 +443,14 @@ export function equityToChartSeries(equity, markers = []) {
         return { values: [base, base], times: [now - 3600e3, now], steps: [0, 0], domain: [now - 3600e3, now] };
     }
 
-    const base = values[0];
     const firstTs = axis[0];
     const lastTs = axis[axis.length - 1];
     const span = Math.max(1, lastTs - firstTs);
     const lead = Math.max(1000, Math.round(span * 0.02));
 
+    // Dominio del eje X: arranca un pelín antes del primer punto para que la
+    // curva no quede pegada al borde. NO se inyecta ningún punto sintético: los
+    // valores/tiempos son 1:1 los del servidor (estables, sin deformación).
     let domainStart = firstTs - lead;
     const maxBack = 45 * 60_000;
     const marks = (markers || [])
@@ -404,10 +462,8 @@ export function equityToChartSeries(equity, markers = []) {
         if (oldest - lead < domainStart) domainStart = oldest - lead;
     }
 
-    const times = [domainStart, ...axis];
-    const vals = [base, ...values];
-    const steps = vals.map((v, i) => (i === 0 ? 0 : Number((v - vals[i - 1]).toFixed(2))));
-    return { values: vals, times, steps, domain: [domainStart, lastTs] };
+    const steps = values.map((v, i) => (i === 0 ? 0 : Number((v - values[i - 1]).toFixed(2))));
+    return { values, times: axis, steps, domain: [domainStart, lastTs] };
 }
 
 export function windowTotal(trades, tf) {

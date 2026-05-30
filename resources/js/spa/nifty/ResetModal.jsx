@@ -1,7 +1,8 @@
 /* NIFTY — modal de confirmación para reiniciar el proceso (acción destructiva).
    Borra toda la data de transacciones y los challengers/champion del usuario y
    restaura las wallets. Se usa desde el pill "Modo Demo" y desde el Engine. */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNifty } from '../data/store';
 
 function WarnIcon(p) {
@@ -17,6 +18,13 @@ export function ResetProcessModal({ open, onClose }) {
     const { actions } = useNifty();
     const [working, setWorking] = useState(false);
     const [err, setErr] = useState(null);
+
+    useEffect(() => {
+        if (!open) return undefined;
+        const onKey = (e) => { if (e.key === 'Escape' && !working) onClose(false); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [open, working, onClose]);
 
     if (!open) return null;
 
@@ -35,7 +43,7 @@ export function ResetProcessModal({ open, onClose }) {
         }
     };
 
-    return (
+    return createPortal(
         <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) close(false); }}>
             <div className="modal-card" role="dialog" aria-modal="true" aria-label="Reiniciar el proceso">
                 <div className="modal-icon danger"><WarnIcon style={{ width: 22, height: 22 }} /></div>
@@ -54,6 +62,7 @@ export function ResetProcessModal({ open, onClose }) {
                     </button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body,
     );
 }

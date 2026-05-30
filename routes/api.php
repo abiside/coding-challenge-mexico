@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\Arbitrage\ArbitrageSnapshotController;
+use App\Http\Controllers\Api\V1\Arbitrage\CycleController;
 use App\Http\Controllers\Api\V1\Arbitrage\EngineController;
 use App\Http\Controllers\Api\V1\Arbitrage\MarketController;
 use App\Http\Controllers\Api\V1\Arbitrage\OnboardingController;
@@ -12,6 +13,7 @@ use App\Http\Controllers\Api\V1\Arbitrage\TradeController;
 use App\Http\Controllers\Api\V1\Arbitrage\WalletController;
 use App\Http\Controllers\Api\V1\Auth\AuthController;
 use App\Http\Controllers\Api\V1\HealthController;
+use App\Http\Controllers\Api\V1\MeanReversion\MeanReversionController;
 use App\Http\Controllers\Api\V1\MessageController;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
@@ -62,9 +64,19 @@ Route::prefix('v1')->group(function (): void {
 
             Route::get('/', [ArbitrageSnapshotController::class, 'index']);
             Route::get('/opportunities', OpportunityController::class);
+            Route::get('/cycles', CycleController::class);
             Route::get('/trades/equity', [TradeController::class, 'equity']);
             Route::get('/trades', TradeController::class);
             Route::get('/{symbol}', [ArbitrageSnapshotController::class, 'show']);
+        });
+
+        // Panel de la estrategia de reversión a la media (worker meanrev:run).
+        // Multi-tenant: cada usuario tiene su propia sesión/billetera aislada.
+        Route::prefix('meanrev')->group(function (): void {
+            Route::get('/overview', [MeanReversionController::class, 'overview']);
+            Route::get('/trades', [MeanReversionController::class, 'trades']);
+            Route::post('/start', [MeanReversionController::class, 'start']);
+            Route::post('/stop', [MeanReversionController::class, 'stop']);
         });
     });
 });

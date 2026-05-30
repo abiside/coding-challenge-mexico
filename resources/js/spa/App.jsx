@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { api, getToken, setToken } from './client';
 import { resetEcho } from './realtime';
 import { NiftyProvider } from './data/store';
-import { I } from './nifty/icons';
 import Auth from './pages/Auth';
 import Onboarding from './pages/Onboarding';
 import AppShell from './AppShell';
@@ -40,9 +39,7 @@ export default function App() {
     if (view === 'loading') {
         return (
             <div className="loading-screen">
-                <div className="brand-mark" style={{ background: 'var(--accent)', display: 'grid', placeItems: 'center' }}>
-                    <I.bolt style={{ width: 22, height: 22, color: '#0a0710' }} />
-                </div>
+                <img src="/logo.svg" alt="Nifty Arbitrage Engine" className="brand-logo loading-logo" />
                 Cargando consola…
             </div>
         );

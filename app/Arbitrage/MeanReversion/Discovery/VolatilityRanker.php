@@ -9,7 +9,7 @@ use App\Infrastructure\MarketData\Exchanges\Binance\BinanceSymbolMapper;
 
 /**
  * Mantiene una ventana de 1h del last-price por símbolo (alimentada por el
- * stream !ticker@arr) y rankea las monedas por volatilidad (coeficiente de
+ * stream !miniTicker@arr) y rankea las monedas por volatilidad (coeficiente de
  * variación). Es la fuente del "top-N más movido en la última hora" que decide
  * qué streams de profundidad abrir.
  *
@@ -35,8 +35,8 @@ final class VolatilityRanker
     }
 
     /**
-     * Ingesta el payload de !ticker@arr (array de tickers). Cada entrada trae
-     * `s` (símbolo crudo) y `c` (last price).
+     * Ingesta el payload de !miniTicker@arr (array de tickers). Cada entrada
+     * trae `s` (símbolo crudo) y `c` (last price).
      *
      * @param  array<int, mixed>  $tickers
      */

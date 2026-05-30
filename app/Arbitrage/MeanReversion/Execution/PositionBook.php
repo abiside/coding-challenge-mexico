@@ -122,4 +122,50 @@ final class PositionBook
     {
         return array_keys($this->positions);
     }
+
+    /**
+     * Rehidrata posiciones desde un snapshot persistido (continuidad tras
+     * reinicios del worker). Acepta la forma producida por snapshot().
+     *
+     * @param  array<int, array{asset?: string, quantity?: float|string, cost_basis?: float|string, opened_at_ms?: int}>  $rows
+     */
+    public function restore(array $rows): void
+    {
+        foreach ($rows as $row) {
+            $asset = strtoupper((string) ($row['asset'] ?? ''));
+            $qty = (float) ($row['quantity'] ?? 0.0);
+            if ($asset === '' || $qty <= 0.0) {
+                continue;
+            }
+            $this->positions[$asset] = [
+                'qty' => $qty,
+                'cost' => (float) ($row['cost_basis'] ?? 0.0),
+                'opened_at_ms' => (int) ($row['opened_at_ms'] ?? (int) (microtime(true) * 1000)),
+            ];
+        }
+    }
+
+    /**
+     * Detalle de las posiciones abiertas para el panel del dashboard.
+     *
+     * @return array<int, array{asset: string, quantity: float, cost_basis: float, avg_cost: float, opened_at_ms: int}>
+     */
+    public function snapshot(): array
+    {
+        $out = [];
+        foreach ($this->positions as $asset => $pos) {
+            if ($pos['qty'] <= 0.0) {
+                continue;
+            }
+            $out[] = [
+                'asset' => $asset,
+                'quantity' => $pos['qty'],
+                'cost_basis' => $pos['cost'],
+                'avg_cost' => $pos['cost'] / $pos['qty'],
+                'opened_at_ms' => $pos['opened_at_ms'],
+            ];
+        }
+
+        return $out;
+    }
 }

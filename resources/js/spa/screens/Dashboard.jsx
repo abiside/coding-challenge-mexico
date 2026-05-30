@@ -3,12 +3,12 @@ import { useState, useEffect } from 'react';
 import { api } from '../client';
 import { useNifty } from '../data/store';
 import { I } from '../nifty/icons';
-import { Kpi, BigChart, OppRow, Lat, Segmented } from '../nifty/widgets';
+import { Kpi, BigChart, OppRow, Lat, Segmented, CyclesPanel } from '../nifty/widgets';
 import { deriveKpis, deriveChartSeries, equityToChartSeries, deriveWinRateSpark, windowTotal, normalizeOpportunity, deriveMarketRows, fmt, signedMoney } from '../nifty/format';
 
 export default function DashboardScreen({ onOpen }) {
-    const { trades, opportunities, market, liveFeed, engine, promotions } = useNifty();
-    const [tf, setTf] = useState('week');
+    const { trades, opportunities, market, liveFeed, engine, promotions, cycleFeed, cycles, cyclesSummary } = useNifty();
+    const [tf, setTf] = useState('m15');
 
     // Curva de equity ESTABLE desde el servidor: evita que la historia se
     // reescriba al deslizarse el feed acotado de 200 trades. Se refresca al
@@ -57,7 +57,7 @@ export default function DashboardScreen({ onOpen }) {
                         <I.perf style={{ width: 16, height: 16, color: 'var(--turq)' }} />
                         <div><h2>Rendimiento · P&L acumulado</h2></div>
                         <div className="right">
-                            <Segmented value={tf} onChange={setTf} options={[{ value: 'h24', label: '1h' }, { value: 'day', label: 'Día' }, { value: 'week', label: 'Semana' }]} />
+                            <Segmented value={tf} onChange={setTf} options={[{ value: 'm15', label: '15 min' }, { value: 'h1', label: '1 h' }, { value: 'h4', label: '4 h' }]} />
                         </div>
                     </div>
                     <div className="chart-legend">
@@ -73,7 +73,7 @@ export default function DashboardScreen({ onOpen }) {
                 <div className="panel">
                     <div className="panel-h">
                         <I.opp style={{ width: 16, height: 16, color: 'var(--fuchsia)' }} />
-                        <h2>Oportunidades en vivo</h2>
+                        <h2>Oportunidades 2 patas (en vivo)</h2>
                         <div className="right">
                             <span className="pill live" style={{ fontSize: '10px', padding: '4px 9px' }}><span className="dot" />{detectedHour}/h</span>
                         </div>
@@ -87,6 +87,9 @@ export default function DashboardScreen({ onOpen }) {
                     </div>
                 </div>
             </div>
+
+            <CyclesPanel cycleFeed={cycleFeed} cycles={cycles} summary={cyclesSummary} limit={8} compact />
+
 
             <div className="panel">
                 <div className="panel-h">

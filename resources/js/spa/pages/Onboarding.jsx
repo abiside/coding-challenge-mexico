@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../client';
 import { I } from '../nifty/icons';
+import { BrandLogo } from '../nifty/BrandLogo';
 import { NumField } from '../nifty/widgets';
 import { exLabel, exColor } from '../nifty/format';
 
@@ -85,10 +86,7 @@ export default function Onboarding({ onDone, onLogout }) {
     return (
         <div className="main" style={{ maxHeight: 'none' }}>
             <header className="hdr">
-                <div className="brand" style={{ padding: 0 }}>
-                    <div className="brand-mark"><I.bolt style={{ width: 16, height: 16, color: '#0a0710' }} /></div>
-                    <div><div className="brand-name">Nifty</div><div className="brand-sub">Configuración inicial</div></div>
-                </div>
+                <BrandLogo tagline="Configuración inicial" style={{ padding: 0 }} />
                 <div className="hdr-stats">
                     <button className="btn" onClick={onLogout}><I.logout />Salir</button>
                 </div>

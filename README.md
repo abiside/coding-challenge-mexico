@@ -1,344 +1,307 @@
-# Coding Challenge Mexico - Laravel 13 + Sail + ReactPHP + Reverb
+# Nifty Arbitrage Engine — Manual
 
-Proyecto base en Laravel 13 con entorno Docker usando Sail y servicios de MySQL + Redis.
+Plataforma de **evaluación de estrategias de arbitraje de criptomonedas en modo
+simulación (paper trading)**. Conecta en tiempo real a varios exchanges, detecta
+oportunidades de arbitraje entre ellos y simula la ejecución de operaciones para
+medir el rendimiento de tus reglas, **sin mover dinero real**.
 
-## Requisitos
+Este documento tiene dos partes:
 
-- Docker
-- Docker Compose
+1. [**Guía de uso (usuario final)**](#parte-1--guía-de-uso-usuario-final): qué hace
+   la herramienta y cómo operarla desde el navegador.
+2. [**Instalación en entorno local**](#parte-2--instalación-en-entorno-local): cómo
+   levantar todo el stack en tu máquina (incluye un instalador automatizado).
 
-## Arranque rapido
+---
 
-1. Levantar contenedores:
+# Parte 1 · Guía de uso (usuario final)
 
-```bash
-./vendor/bin/sail up -d
+## 1.1 ¿Qué es y para qué sirve?
+
+Nifty mantiene conexiones WebSocket permanentes a los libros de órdenes (order
+books) de varios exchanges (Binance, Kraken, Coinbase, Bybit, OKX, Bitget).
+Cuando el precio de compra en un exchange es menor que el precio de venta en otro,
+existe una **oportunidad de arbitraje**. El motor:
+
+1. Detecta el cruce de precios.
+2. Calcula cuánto volumen es realmente ejecutable según la profundidad del libro
+   (slippage, fills parciales).
+3. Descuenta comisiones (fees), penalización por latencia y costos fijos.
+4. Verifica que tu **wallet simulada** tenga saldo para ambas patas.
+5. Aplica reglas de riesgo (frescura de datos, volumen mínimo, latencia, margen
+   mínimo, circuit breaker).
+6. **Simula** la ejecución de la operación y registra el P&L (ganancia/pérdida).
+
+> Importante: **todo es simulado**. Los "monederos" son ledgers virtuales con
+> saldo inicial ficticio. La herramienta es para **evaluar estrategias**, no para
+> operar con fondos reales.
+
+## 1.2 Conceptos clave
+
+| Concepto | Qué significa |
+|---|---|
+| **Oportunidad** | Un cruce de precios detectado entre dos exchanges para un símbolo (p. ej. `BTC/USDT`). |
+| **Decisión** | El veredicto del motor sobre una oportunidad: `execute` (ejecutar), `reject` (rechazar por no cumplir reglas) o `ignore` (ignorar, p. ej. datos viejos). |
+| **Trade simulado** | Una operación que el motor decidió ejecutar; muta tu wallet simulada y genera P&L. |
+| **Wallet** | Saldo simulado por activo (USDT, BTC, …). Define cuánto puedes "comprar/vender". |
+| **Configuración (reglas)** | Símbolos, umbrales de rentabilidad, frescura, latencia máxima, fees y circuit breaker que controlan qué se ejecuta. |
+| **Simulador de oportunidades** | Modo que inyecta una deriva sintética de precios para forzar escenarios rentables (útil porque en mercado real los spreads rara vez cubren los fees). |
+| **Estrategia / Autopilot** | Variantes de reglas que compiten entre sí (champion-challenger) para encontrar la mejor configuración. |
+
+## 1.3 Acceso
+
+La consola web vive en:
+
+```
+http://localhost:18080/console
 ```
 
-2. Ejecutar migraciones:
+(El puerto por defecto es `18080`; ver Parte 2.)
 
-```bash
-./vendor/bin/sail artisan migrate
+## 1.4 Flujo de primer uso
+
+```mermaid
+flowchart LR
+    reg[Registro / Login] --> onb[Onboarding: settings + wallets]
+    onb --> start[Iniciar simulación]
+    start --> mon[Monitoreo en tiempo real]
 ```
 
-3. Levantar servidor websocket de Reverb:
+1. **Registro / Login.** Crea una cuenta (email + contraseña) o inicia sesión. Cada
+   usuario tiene su propia configuración, wallets y simulación aisladas.
+2. **Onboarding.** Antes de operar debes:
+   - Definir tus **reglas** (símbolos a vigilar, umbrales, fees, etc.). Puedes usar
+     los valores por defecto.
+   - Crear al menos una **wallet con fondos** simulados (p. ej. USDT y BTC).
+   - Existe un atajo de **demo** que precarga una configuración y wallets de ejemplo.
+3. **Iniciar simulación.** Con el botón **Iniciar** del encabezado. El motor empieza
+   a evaluar el flujo de mercado contra tus reglas en vivo.
+
+## 1.5 Las pantallas
+
+Menú lateral, dividido en **Monitoreo** y **Sistema**:
+
+**Monitoreo**
+
+- **Dashboard** — Vista general: estado del engine, oportunidades recientes y
+  métricas por símbolo.
+- **Mercado** — Order book consolidado multi-exchange en tiempo real.
+- **Oportunidades** — Monitor en vivo de cada oportunidad con su decisión
+  (`execute` / `reject` / `ignore`) y el motivo.
+- **Reversión a la media** — Estrategia complementaria (spot USDT, Binance).
+- **Trades** — Historial de operaciones simuladas y P&L total.
+- **Wallets** — Balances simulados y distribución de capital.
+- **Rendimiento** — Análisis de P&L, curvas de retorno y métricas de calidad.
+
+**Sistema**
+
+- **Engine** — Salud del motor, conexiones por exchange y latencias.
+- **Autopilot** — Optimización champion-challenger entre variantes de estrategia.
+- **Configuración** — Edición de reglas de operación y gestión de riesgo.
+
+## 1.6 Controles del encabezado
+
+- **Iniciar / Pausar** — Arranca o detiene tu simulación (no reinicia el proceso de
+  fondo; se aplica en caliente).
+- **Simulación ON/OFF** — Enciende/apaga el **simulador de oportunidades** (deriva
+  sintética de precios). Recomendado en local para ver el motor operar, ya que en
+  mercado real los spreads casi nunca superan los fees.
+- **Modo Demo (Reiniciar)** — Borra toda tu data simulada (oportunidades, trades,
+  challengers) y deja el entorno limpio.
+- **Indicadores** — Exchanges en línea, latencia promedio, uptime y hora.
+
+## 1.7 Cómo interpretar una decisión
+
+Cuando abres una oportunidad ves su veredicto y el motivo:
+
+- **`execute`** — Cumple todas las reglas; se simula la operación y se actualiza el
+  P&L.
+- **`reject`** — Se detectó el cruce pero no pasa algún guard: margen neto por
+  debajo del mínimo, volumen insuficiente, latencia alta o circuit breaker activo.
+- **`ignore`** — No es accionable (p. ej. datos del libro demasiado viejos respecto
+  al umbral de frescura).
+
+> Si no ves ejecuciones, normalmente es correcto: en mercado real el spread no cubre
+> los fees. Enciende el **Simulador de oportunidades** (header) o relaja los umbrales
+> en **Configuración** para ver el motor ejecutar.
+
+---
+
+# Parte 2 · Instalación en entorno local
+
+El proyecto corre sobre **Docker** mediante **Laravel Sail** (PHP 8.5 + Laravel 13),
+con servicios de **MySQL** y **Redis**. El frontend es **React + Vite**, y la capa de
+tiempo real usa **Laravel Reverb** (WebSockets).
+
+## 2.1 Requisitos
+
+- **Docker** y **Docker Compose v2** (`docker compose`, no `docker-compose`).
+- **Git**.
+- Puertos libres en el host: `18080` (app), `8080` (Reverb/WebSocket), `5173`
+  (Vite), `3306` (MySQL), `6379` (Redis). Son configurables vía `.env`.
+- No necesitas PHP, Composer ni Node instalados en el host: todo corre dentro de los
+  contenedores.
+
+## 2.2 Instalación rápida (recomendada)
+
+Se incluye el script `install.sh`, que automatiza todo el proceso de extremo a
+extremo y es **idempotente** (puedes volver a correrlo sin romper nada).
 
 ```bash
-./vendor/bin/sail artisan reverb:start
+./install.sh
 ```
 
-4. En otra terminal, levantar Vite para el frontend React:
+El script:
+
+1. Verifica Docker y Docker Compose.
+2. Crea el `.env` desde `.env.example` si no existe.
+3. Instala dependencias de Composer (usando un contenedor efímero si `vendor/`
+   todavía no existe).
+4. Levanta los contenedores con Sail (`mysql`, `redis`, `laravel.test`).
+5. Genera la `APP_KEY` si falta.
+6. Espera a que MySQL esté listo y corre las migraciones.
+7. Instala dependencias de Node y compila el frontend.
+8. Lanza los procesos de fondo: **Reverb**, **market:feed** y **arbitrage:run**.
+
+Al terminar imprime las URLs de acceso.
+
+Para sólo (re)lanzar los procesos de fondo más adelante (p. ej. tras reiniciar la
+máquina), usa:
+
+```bash
+./install.sh --workers-only
+```
+
+## 2.3 Acceso tras la instalación
+
+- Consola multi-usuario (SPA): <http://localhost:18080/console>
+- Health check de la API: <http://localhost:18080/api/v1/health>
+- Para desarrollo del frontend con hot-reload, en otra terminal:
 
 ```bash
 ./vendor/bin/sail npm run dev
 ```
 
-5. Abrir la aplicacion en [http://localhost:18080](http://localhost:18080) y el frontend React en [http://localhost:18080/app](http://localhost:18080/app).
+## 2.4 Instalación manual (paso a paso)
 
-## Servicios incluidos en Sail
-
-- `laravel.test` (app PHP/Laravel)
-- `mysql` (MySQL 5.7)
-- `redis` (Redis alpine)
-
-La configuracion esta en `compose.yaml`, `docker/sail/Dockerfile` y variables por defecto en `.env` / `.env.example`.
-
-## Demo de paralelismo con ReactPHP
-
-Se incluye un mecanismo de paralelismo basado en ReactPHP que ejecuta tareas en procesos hijos y controla concurrencia maxima.
-
-Comando principal:
+Si prefieres no usar el script, estos son los pasos equivalentes.
 
 ```bash
-./vendor/bin/sail artisan tasks:parallel-demo --tasks=8 --max=4
+# 1) Variables de entorno
+cp .env.example .env
+
+# 2) Dependencias de Composer (contenedor efímero la primera vez)
+docker run --rm \
+  -u "$(id -u):$(id -g)" \
+  -v "$(pwd):/var/www/html" -w /var/www/html \
+  laravelsail/php84-composer:latest \
+  composer install --ignore-platform-reqs --no-interaction
+
+# 3) Levantar contenedores
+./vendor/bin/sail up -d
+
+# 4) Clave de la app
+./vendor/bin/sail artisan key:generate
+
+# 5) Migraciones
+./vendor/bin/sail artisan migrate --force
+
+# 6) Frontend
+./vendor/bin/sail npm install
+./vendor/bin/sail npm run build
 ```
 
-Opciones:
-
-- `--tasks`: cantidad de tareas a simular
-- `--max`: maximo de tareas corriendo en paralelo
-
-Comando worker interno (usado por el runner):
+Luego levanta los procesos de larga vida (cada uno en background dentro del
+contenedor):
 
 ```bash
-./vendor/bin/sail artisan react:task-worker 1 2
-```
+# WebSockets (Reverb)
+./vendor/bin/sail artisan reverb:start
 
-## Arquitectura base API + React + Reverb
-
-- API versionada en `routes/api.php` bajo prefijo `/api/v1`.
-- Endpoint de estado: `GET /api/v1/health`.
-- Endpoint para publicar mensajes en tiempo real: `POST /api/v1/messages`.
-- Evento broadcast: `App\Events\FrontendMessageSent` en canal público `frontend-messages`.
-- Frontend React inicial: `resources/js/app.jsx`.
-- Configuración websocket cliente: `resources/js/echo.js`.
-
-Variables requeridas:
-
-- `BROADCAST_CONNECTION=reverb`
-- `REVERB_*` y `VITE_REVERB_*` en `.env`
-
-Flujo de comunicación:
-
-1. React envía `POST /api/v1/messages`.
-2. Laravel valida y dispara el evento broadcast.
-3. Reverb distribuye el evento al canal `frontend-messages`.
-4. React escucha `.frontend.message.sent` y actualiza la UI en tiempo real.
-
-## Archivos clave
-
-- `compose.yaml`: stack Docker de Sail + MySQL + Redis + servicio opcional `market-feed`
-- `routes/console.php`: comandos Artisan para demo y worker
-- `app/Services/Parallel/ReactParallelRunner.php`: orquestador de paralelismo con ReactPHP
-- `app/Console/Commands/MarketFeedCommand.php`: comando de larga vida para conectores WS
-- `app/Domain/MarketData/`: contratos y DTOs normalizados (ticker / orderbook)
-- `app/Infrastructure/MarketData/`: cliente WS con ReactPHP, supervisor, publishers (Redis/Logger) y conectores por exchange
-- `config/marketdata.php`: configuración del feed de mercado
-
-## Conectores WebSocket de exchanges (always-on)
-
-Se incluye una arquitectura para mantener conexiones WebSocket persistentes a varios exchanges, normalizar los mensajes y publicarlos en Redis (pub/sub + último estado).
-
-### Componentes
-
-```mermaid
-flowchart LR
-    cmd[Artisan market:feed] --> sup[ConnectorSupervisor]
-    sup --> binance[BinanceConnector]
-    sup --> kraken[KrakenConnector]
-    sup --> coinbase[CoinbaseConnector]
-    sup --> bybit[BybitConnector]
-    sup --> okx[OkxConnector]
-    sup --> bitget[BitgetConnector]
-    binance --> wsBinance["wss://stream.binance.com"]
-    kraken --> wsKraken["wss://ws.kraken.com/v2"]
-    coinbase --> wsCoinbase["wss://advanced-trade-ws.coinbase.com"]
-    bybit --> wsBybit["wss://stream.bybit.com/v5/public/spot"]
-    okx --> wsOkx["wss://ws.okx.com:8443/ws/v5/public"]
-    bitget --> wsBitget["wss://ws.bitget.com/v2/ws/public"]
-    binance --> normalizer[Parser por exchange]
-    kraken --> normalizer
-    coinbase --> normalizer
-    bybit --> normalizer
-    okx --> normalizer
-    bitget --> normalizer
-    normalizer --> publisher[CompositeMarketMessagePublisher]
-    publisher --> redis["Redis pub/sub + market:*:latest"]
-    publisher --> logs[Laravel logs]
-```
-
-- Reconexión automática con backoff exponencial + jitter ([`BackoffStrategy`](app/Infrastructure/MarketData/Supervisor/BackoffStrategy.php)).
-- Re-suscripción tras reconectar.
-- Estado de salud por exchange (último mensaje, intentos fallidos) reportado periódicamente.
-- Publicación dual: pub/sub a `market:<stream>:<exchange>:<symbol>` y snapshot del último mensaje en `market:<stream>:<exchange>:<symbol>:latest`.
-- Métricas de refresco por stream (`ticker` y `orderbook`): `inter_arrival_ms` p50/p95/p99, `source_to_ingest_ms` p50/p95/p99 y `estimated_refresh_hz`.
-
-### Exchanges soportados
-
-- `binance` — `wss://stream.binance.com:9443/stream` (ticker `@ticker`, orderbook `@depth20@100ms`).
-- `kraken` — `wss://ws.kraken.com/v2` (canales `ticker` y `book`).
-- `coinbase` — `wss://advanced-trade-ws.coinbase.com` (canales `ticker` y `level2`).
-- `bybit` — `wss://stream.bybit.com/v5/public/spot` (topics `tickers.<symbol>` y `orderbook.50.<symbol>`).
-- `okx` — `wss://ws.okx.com:8443/ws/v5/public` (canales `tickers` y `books`).
-- `bitget` — `wss://ws.bitget.com/v2/ws/public` (canales `ticker` y `books`).
-
-### Levantar el feed
-
-```bash
+# Feed de mercado (conectores WebSocket de exchanges)
 ./vendor/bin/sail artisan market:feed --exchanges=binance,kraken,coinbase,bybit,okx,bitget
-```
 
-Opciones:
-
-- `--exchanges=binance,kraken,coinbase,bybit,okx,bitget`
-- `--symbols=BTC/USDT,ETH/USDT` (formato normalizado, cada conector lo traduce a su formato)
-- `--streams=ticker,orderbook`
-- `--no-redis` (solo loguear, útil sin Redis)
-- `--quiet-logs` (no escribir un log por cada mensaje recibido)
-- `--duration=60` (detener el listener tras N segundos, útil para smoke tests)
-
-Las variables `MARKET_FEED_*` en `.env` definen los valores por defecto cuando no se pasan flags.
-
-### Monitor de frecuencia de refresco
-
-Cada `MARKET_FEED_STATUS_INTERVAL` segundos, el log `storage/logs/laravel.log` emite un bloque:
-
-```text
-[market-feed][status] {
-  "<exchange>": {
-    "metrics": {
-      "ticker": {
-        "inter_arrival_ms": {"p50": ..., "p95": ..., "p99": ...},
-        "source_to_ingest_ms": {"p50": ..., "p95": ..., "p99": ...},
-        "estimated_refresh_hz": ...
-      },
-      "orderbook": { ... }
-    }
-  }
-}
-```
-
-Esto te da un monitor rápido de cadencia real y latencia de ingestión sin depender de observabilidad externa.
-
-### Suscribirse a los streams
-
-```bash
-./vendor/bin/sail redis redis-cli psubscribe 'market:*'
-```
-
-### Smoke test rápido
-
-```bash
-./vendor/bin/sail artisan market:feed --exchanges=binance --symbols=BTC/USDT --streams=ticker --duration=15
-tail -f storage/logs/laravel.log
-```
-
-### Operación como servicio en Sail
-
-El servicio opcional `market-feed` está definido en `compose.yaml` bajo el profile `feed` para no arrancar por defecto:
-
-```bash
-./vendor/bin/sail --profile feed up -d market-feed
-```
-
-### Tests
-
-```bash
-./vendor/bin/sail artisan test --testsuite=Unit
-```
-
-Cubren parsers de Binance, Kraken, Coinbase, Bybit, OKX y Bitget, además del supervisor (subscribe + reconexión).
-
-## Engine de arbitraje (`app/Arbitrage`)
-
-Engine de arbitraje de BTC cross-exchange, desacoplado del dashboard y de los controllers. Corre como proceso persistente y **event-driven**: cada update de order book publicado por `market:feed` en Redis dispara el pipeline completo de evaluación en memoria.
-
-### Pipeline
-
-```mermaid
-flowchart LR
-    feed[market:feed] --> redis["Redis Pub/Sub market:orderbook:*"]
-    redis --> sub[RedisMarketSubscriber ReactPHP]
-    sub --> store[OrderBookStore in-memory]
-    store --> scan[ArbitrageScanner]
-    scan --> liq[LiquidityCalculator]
-    liq --> profit[ProfitabilityCalculator]
-    profit --> wallet[WalletValidator]
-    wallet --> risk[RiskManager + Guards + CircuitBreaker]
-    risk --> exec[ExecutionSimulator single-writer]
-    exec --> buffer[PersistenceBuffer]
-    buffer --> mysql[(MySQL)]
-    exec --> dash[ReverbDashboardPublisher]
-    dash --> react[React dashboard]
-```
-
-1. **Ingestión / normalización**: reutiliza `market:feed` (no se reescribe).
-2. **OrderBookStore**: último book válido por `(exchange, symbol)` con best bid/ask, frescura y latencia, en memoria.
-3. **ArbitrageScanner**: ante cada update compara contra books frescos de otros exchanges; candidato si `buy_ask < sell_bid`.
-4. **LiquidityCalculator**: recorre profundidad, calcula volumen ejecutable y precios promedio ponderados (slippage real, fills parciales).
-5. **ProfitabilityCalculator**: profit bruto y neto descontando fees, penalización por latencia y costo fijo.
-6. **WalletValidator**: define volumen final según USDT (comprador) y BTC (vendedor) disponibles.
-7. **RiskManager**: guards (`freshness`, `min_volume`, `latency`, `min_profit`) + `CircuitBreaker` → decisión `execute | reject | ignore`.
-8. **ExecutionSimulator**: **único** componente que muta balances (single-writer), con idempotencia por oportunidad; simula ambas patas y calcula P&L.
-9. **Persistencia desacoplada**: `PersistenceBuffer` agrupa por lote/tiempo fuera del camino crítico; solo persiste eventos relevantes (no cada tick).
-10. **Dashboard**: `ReverbDashboardPublisher` publica estado ya procesado (con throttle) + snapshot en cache para el primer render REST.
-
-### Reglas de diseño respetadas
-
-- Engine separado del dashboard, modelos y controllers; conectores intercambiables por interfaces.
-- Procesamiento crítico en memoria; no se guarda cada tick en DB.
-- `single-writer` de wallets: solo `ExecutionSimulator` escribe balances.
-- La UI no calcula arbitraje; solo consume estado procesado vía API + Reverb.
-- Contratos (`app/Arbitrage/Contracts`) permiten reemplazar el engine sin tocar dashboard/modelos/frontend.
-
-### Levantar el engine
-
-```bash
-# 1) Ingestión de mercado
-./vendor/bin/sail artisan market:feed --exchanges=binance,kraken,coinbase
-
-# 2) Engine de arbitraje (event-driven sobre Redis)
+# Engine de arbitraje (event-driven sobre Redis, multi-usuario)
 ./vendor/bin/sail artisan arbitrage:run
 ```
 
-Opciones de `arbitrage:run`:
+## 2.5 Arquitectura de procesos
 
-- (sin flags) **modo multi-usuario**: levanta un engine por cada simulación activa y reconcilia altas/bajas en caliente cada 3 s.
-- `--user=ID` (ejecutar solo para un usuario)
-- `--global` (engine único sin scoping por usuario; usa `config('arbitrage')`)
-- `--symbols=BTC/USDT` (override en modo `--global`)
-- `--no-persistence` (no escribir en DB)
-- `--no-dashboard` (no publicar a Reverb)
-- `--duration=30` (detener tras N segundos; smoke tests)
-
-La configuración base vive en `config/arbitrage.php` (fees por exchange, umbrales, latencia, circuit breaker, balances iniciales, persistencia y dashboard), parametrizable vía variables `ARBITRAGE_*` en `.env`. En modo multi-usuario cada usuario sobreescribe esos valores con su `arbitrage_settings`.
-
-### Multi-usuario (auth + onboarding + simulación personal)
-
-El sistema es multi-tenant: cada usuario tiene su propia configuración, wallets y simulación.
-
-- **Auth (Sanctum, token Bearer)**: `POST /api/v1/auth/register`, `POST /api/v1/auth/login`, `GET /api/v1/auth/me`, `POST /api/v1/auth/logout`.
-- **Configuración**: `GET/PUT /api/v1/arbitrage/settings` (símbolos, umbrales, frescura, latencia, fees override, circuit breaker, flag `onboarded`).
-- **Wallets**: `GET/POST /api/v1/arbitrage/wallets`, `DELETE /api/v1/arbitrage/wallets/{id}` (saldos simulados por usuario).
-- **Simulación**: `GET /api/v1/arbitrage/simulation` (estado + stats), `POST .../simulation/start`, `POST .../simulation/stop`. Iniciar requiere onboarding completo y al menos una wallet con fondos.
-- **Dashboard scoping**: cada usuario consume su estado vía los endpoints anteriores y escucha su **canal privado** `private-arbitrage.user.{id}` (autorizado por Sanctum en `/api/broadcasting/auth`).
-
-`arbitrage:run` (sin flags) carga las `simulation_runs` activas, levanta un `EngineRuntime` por usuario (estado de mercado + wallets + riesgo aislados) y persiste oportunidades/trades/wallets con `user_id`. Las sesiones que se inician/detienen desde la API se reflejan en caliente sin reiniciar el proceso.
-
-### Frontend SPA multi-usuario
-
-`resources/js/spa/*`, ruta [http://localhost:18080/console](http://localhost:18080/console). Genérico y funcional (login/registro → onboarding de settings+wallets → panel de monitoreo con start/stop y flujo en vivo por el canal privado).
-
-### Monitor de consola en tiempo real (`arbitrage:monitor`)
-
-TUI para observar el motor de evaluación en vivo mientras se construye la UI web. Levanta un engine efímero con wallets/configuración **arbitrarias** (flags), consume Redis y redibuja métricas, wallets, decisiones (color por `execute`/`reject`/`ignore` con su motivo) y trades simulados. No persiste ni publica a Reverb.
-
-```bash
-# Terminal A: ingestión
-./vendor/bin/sail artisan market:feed
-
-# Terminal B: monitor (fee 0 y margen relajado para ver ejecuciones)
-./vendor/bin/sail artisan arbitrage:monitor --fee=0 --min-margin=0 --min-profit=0.01
+```mermaid
+flowchart LR
+    subgraph Docker [Contenedores Sail]
+        app[laravel.test\nserve :80 -> :18080]
+        mysql[(MySQL)]
+        redis[(Redis)]
+    end
+    feed[market:feed] --> redis
+    redis --> engine[arbitrage:run]
+    engine --> mysql
+    engine --> reverb[reverb:start :8080]
+    reverb --> browser[Consola React /console]
+    app --> browser
 ```
 
-Flags: `--symbols=`, `--usdt=` y `--btc=` (saldo por exchange), `--fee=` (uniforme), `--min-profit=`, `--min-margin=`, `--refresh=` (ms), `--duration=` (segundos).
+- `market:feed` ingiere los order books y los publica en Redis (pub/sub).
+- `arbitrage:run` consume Redis, evalúa por usuario y persiste en MySQL.
+- `reverb:start` distribuye el estado procesado a la SPA por WebSocket.
+- `laravel.test` sirve la API REST y la SPA.
 
-### API del dashboard (`/api/v1/arbitrage`, requiere auth)
+> Los workers son procesos PHP persistentes y **no recargan código en caliente**.
+> Tras cambiar el backend de un worker, reinícialo (ver `.cursor/rules` del repo o la
+> sección de comandos útiles abajo).
 
-- `GET /api/v1/arbitrage` — snapshot por símbolo del usuario (cache).
-- `GET /api/v1/arbitrage/{symbol}` — detalle por símbolo.
-- `GET /api/v1/arbitrage/opportunities?decision=execute&symbol=BTC/USDT` — histórico del usuario.
-- `GET /api/v1/arbitrage/trades` — trades simulados del usuario + P&L total.
-- `GET /api/v1/arbitrage/wallets` — balances simulados del usuario.
-
-El dashboard legacy single-tenant (`resources/js/dashboard.jsx`, canal público `arbitrage-dashboard`) sigue disponible y se alimenta con `arbitrage:run --global`.
-
-### Modelos / persistencia
-
-`Exchange`, `WalletBalance`, `Opportunity`, `Trade`, `TradeFill`, `BotEvent` (con `user_id`), más `ArbitrageSetting` y `SimulationRun` para multi-tenancy (migraciones `2026_05_29_*`).
-
-### Smoke test end-to-end
+## 2.6 Verificación
 
 ```bash
-# Terminal A
-./vendor/bin/sail artisan arbitrage:run --duration=30 --no-dashboard
+# ¿Procesos de fondo arriba?
+./vendor/bin/sail exec laravel.test sh -lc "ps aux | grep '[a]rtisan'"
 
-# Terminal B: publicar dos books cruzados
-./vendor/bin/sail artisan tinker --execute='
-use Illuminate\Support\Facades\Redis;
-$mk=fn($ex,$b,$a)=>json_encode(["type"=>"orderbook","exchange"=>$ex,"symbol"=>"BTC/USDT","bids"=>$b,"asks"=>$a,"timestamp_ms"=>(int)(microtime(true)*1000),"is_snapshot"=>true]);
-$c=Redis::connection("default");
-$c->publish("market:orderbook:binance:btc-usdt",$mk("binance",[["99900","2"]],[["100000","2"]]));
-$c->publish("market:orderbook:kraken:btc-usdt",$mk("kraken",[["100500","2"]],[["100600","2"]]));
-'
-# Verificar
-./vendor/bin/sail artisan tinker --execute='echo App\Models\Trade::count();'
-```
+# Health de la API
+curl -s http://localhost:18080/api/v1/health
 
-### Tests del engine
+# Suscribirse al stream de mercado (debe mostrar mensajes)
+./vendor/bin/sail redis redis-cli psubscribe 'market:*'
 
-```bash
+# Tests unitarios
 ./vendor/bin/sail artisan test --testsuite=Unit
 ```
 
-Cubren `OrderBookStore`, `ArbitrageScanner`, `LiquidityCalculator`, `ProfitabilityCalculator`, `WalletManager` (single-writer atómico), `ExecutionSimulator` (idempotencia + balances), `RiskManager` (guards + circuit breaker) y el pipeline completo (`ArbitrageEngine`).
+## 2.7 Comandos útiles
+
+```bash
+# Estado / logs de contenedores
+./vendor/bin/sail ps
+./vendor/bin/sail logs -f laravel.test
+
+# Reiniciar un worker (ejemplo: engine de arbitraje)
+./vendor/bin/sail exec laravel.test sh -lc "pkill -f '[a]rtisan arbitrage:run'"; sleep 2
+./vendor/bin/sail exec -d laravel.test sh -lc "php artisan arbitrage:run >> storage/logs/engine.out 2>&1"
+
+# Apagar todo
+./vendor/bin/sail down
+
+# Apagar y borrar datos (MySQL/Redis)
+./vendor/bin/sail down -v
+```
+
+## 2.8 Solución de problemas
+
+| Síntoma | Causa probable | Solución |
+|---|---|---|
+| `vendor/bin/sail: No existe` | Aún no se instaló Composer | Corre el paso 2 de §2.4 o `./install.sh` |
+| La consola carga pero no hay datos en vivo | Workers no están corriendo | `./install.sh --workers-only` o §2.5 |
+| Puerto ocupado al hacer `up` | Otro servicio usa `18080/8080/3306/6379` | Cambia los puertos en `.env` (`APP_PORT`, `REVERB_PORT`, `FORWARD_DB_PORT`, `FORWARD_REDIS_PORT`) |
+| `APP_KEY` vacía / errores de cifrado | Falta generar la clave | `./vendor/bin/sail artisan key:generate` |
+| No veo ejecuciones de trades | Spreads reales no cubren fees | Enciende el **Simulador** en el header o relaja umbrales en **Configuración** |
+| Cambié backend y no surte efecto | El worker no recarga en caliente | Reinicia el worker afectado (§2.7) |
+
+---
+
+## Documentación relacionada
+
+- [`docs/desarrollo.md`](docs/desarrollo.md) — Guía técnica / de desarrollo: stack,
+  comandos Artisan, conectores WebSocket, pipeline del engine de arbitraje, API y tests.
+- [`docs/architecture/multiusuario.md`](docs/architecture/multiusuario.md) —
+  Arquitectura multiusuario del engine (mercado compartido / estado privado por
+  estrategia, sharding, evaluación de desempeño).

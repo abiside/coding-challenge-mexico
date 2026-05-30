@@ -33,6 +33,33 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Panel en el dashboard (broadcasting + cache)
+    |--------------------------------------------------------------------------
+    |
+    | La estrategia es global (una sola billetera simulada compartida), así que
+    | publica en un canal PÚBLICO de Reverb que cualquier sesión del dashboard
+    | puede escuchar, en lugar de un canal privado por usuario como el arbitraje.
+    | Además cachea el último snapshot de métricas/posiciones para el primer
+    | render vía REST, y persiste las operaciones ejecutadas en DB para histórico.
+    |
+    */
+
+    'dashboard' => [
+        'enabled' => (bool) env('MEANREV_DASHBOARD_ENABLED', true),
+        // Canal público de Reverb (sin auth). El frontend usa echo.channel().
+        'channel' => env('MEANREV_DASHBOARD_CHANNEL', 'meanrev'),
+        // Throttle de broadcasts por símbolo para no saturar el canal.
+        'max_broadcasts_per_second' => (int) env('MEANREV_DASHBOARD_BPS', 5),
+        // TTL del snapshot de métricas en cache (segundos).
+        'snapshot_ttl_seconds' => (int) env('MEANREV_DASHBOARD_TTL', 30),
+        // Cuántas señales recientes mantener en cache para el feed inicial REST.
+        'recent_signals' => (int) env('MEANREV_DASHBOARD_RECENT', 40),
+        // Persistir las ejecuciones en la tabla mean_reversion_trades.
+        'persist_trades' => (bool) env('MEANREV_PERSIST_TRADES', true),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Discovery + administración dinámica de sockets
     |--------------------------------------------------------------------------
     |

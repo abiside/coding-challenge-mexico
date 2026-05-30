@@ -1,21 +1,7 @@
 /* NIFTY — shared widgets: charts, controls, indicators (portado del diseño) */
-import { useEffect, useRef, useState } from 'react';
-import { stageLabel, signedMoney, fmtCompact } from './format';
-
-// Reescala un arreglo de valores a `len` puntos por interpolación lineal. Sirve
-// para morphear la curva aunque cambie la cantidad de puntos entre snapshots.
-function resampleTo(arr, len) {
-    if (!arr || arr.length === 0) return new Array(len).fill(0);
-    if (arr.length === len) return arr.slice();
-    const out = new Array(len);
-    const span = Math.max(1, arr.length - 1);
-    for (let i = 0; i < len; i++) {
-        const src = (i / Math.max(1, len - 1)) * span;
-        const lo = Math.floor(src), hi = Math.min(arr.length - 1, Math.ceil(src)), f = src - lo;
-        out[i] = arr[lo] + (arr[hi] - arr[lo]) * f;
-    }
-    return out;
-}
+import { useRef, useState } from 'react';
+import { stageLabel, signedMoney, fmtCompact, fmt, normalizeCycle, mergeCycles } from './format';
+import { I } from './icons';
 
 /* ---------- Sparkline ---------- */
 export function Sparkline({ data, color = 'var(--turq)', h = 30 }) {
@@ -96,32 +82,10 @@ export function BigChart({ data, times, steps, markers = [], domain }) {
     // revelar su % bajo demanda). null = ninguno.
     const [hoverDelta, setHoverDelta] = useState(null);
 
-    // Morph suave entre snapshots: la curva se desliza a su nueva forma en vez
-    // de saltar de golpe cuando el REST trae nuevos trades. Solo se reanima al
-    // cambiar la firma de los valores, no en cada re-render del padre.
-    const [aVals, setAVals] = useState(target);
-    const fromRef = useRef(target);
-    const rafRef = useRef(0);
-    const sig = n + '|' + Number(target[n - 1] ?? 0).toFixed(2) + '|' + Number(target[0] ?? 0).toFixed(2);
-    useEffect(() => {
-        const goal = target;
-        const from = resampleTo(fromRef.current, goal.length);
-        const start = performance.now();
-        const DUR = 520;
-        cancelAnimationFrame(rafRef.current);
-        const stepFn = (now) => {
-            const t = Math.min(1, (now - start) / DUR);
-            const e = 1 - Math.pow(1 - t, 3); // easeOutCubic
-            setAVals(goal.map((v, i) => from[i] + (v - from[i]) * e));
-            if (t < 1) rafRef.current = requestAnimationFrame(stepFn);
-            else fromRef.current = goal;
-        };
-        rafRef.current = requestAnimationFrame(stepFn);
-        return () => cancelAnimationFrame(rafRef.current);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [sig]);
-
-    const series = aVals.length === n ? aVals : target;
+    // Sin animación/morphing: la curva se dibuja 1:1 con los datos reales. Cada
+    // punto queda fijo en su (tiempo, valor); no se interpola ni se suaviza, así
+    // que el histórico nunca se "deforma" entre polls.
+    const series = target;
 
     // Eje X como escala temporal lineal real: cada punto se ubica según su
     // timestamp dentro del dominio [t0, t1] (la ventana seleccionada), no por su
@@ -434,6 +398,71 @@ export function OppRow({ o, onClick }) {
             {evaluating && (
                 <div className="prog"><span className="prog-fill" style={{ width: o.progress + '%' }} /></div>
             )}
+        </div>
+    );
+}
+
+/* ---------- Panel de ciclos triangulares (live + histórico) ----------
+   Reutilizado por el Dashboard y el Engine. Une el feed en vivo (WS) con el
+   histórico REST y muestra cada ciclo con ruta, profit neto, margen y resultado
+   realizado. El header trae un resumen (ejecutados/h y P&L realizado). */
+export function CyclesPanel({ cycleFeed, cycles, summary, limit = 12, compact = false }) {
+    const liveRows = (cycleFeed || []).map(normalizeCycle);
+    const histRows = (cycles || []).map(normalizeCycle);
+    const rows = mergeCycles(liveRows, histRows, limit);
+    const fmtAmt = (n, dec) => (n >= 0 ? '+' : '−') + fmt(Math.abs(n), dec);
+
+    return (
+        <div className="panel">
+            <div className="panel-h">
+                <I.opp style={{ width: 16, height: 16, color: 'var(--turq)' }} />
+                <h2>Arbitraje triangular (ciclos)</h2>
+                <div className="right" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    {summary && (
+                        <span className="muted" style={{ fontSize: 12 }}>
+                            {summary.executed_last_hour ?? 0}/h ·{' '}
+                            <span className={(summary.realized_pnl ?? 0) >= 0 ? 'pos' : 'neg'}>
+                                {signedMoney(summary.realized_pnl ?? 0)}
+                            </span>
+                        </span>
+                    )}
+                    <span className={'pill ' + (liveRows.length ? 'live' : '')} style={{ fontSize: '10px', padding: '4px 9px' }}>
+                        <span className="dot" />{liveRows.length ? 'en vivo' : (rows.length ? 'histórico' : 'sin ciclos')}
+                    </span>
+                </div>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+                <table className="tbl">
+                    <thead>
+                        <tr>
+                            <th>Hora</th>
+                            <th>Ruta</th>
+                            <th>Spread bruto</th>
+                            <th>Profit neto</th>
+                            {!compact && <th>Margen</th>}
+                            <th>Realizado</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {rows.length === 0 ? (
+                            <tr><td colSpan={compact ? 6 : 7} className="empty-note">Sin ciclos triangulares todavía. Activa <span className="mono">ARBITRAGE_TRIANGULAR_ENABLED=true</span> y reinicia el engine.</td></tr>
+                        ) : rows.map((c) => (
+                            <tr key={c.id} className={c._flashAt && (Date.now() - c._flashAt < 1150) ? 'flash' : ''}>
+                                <td className="mono" style={{ color: 'var(--tx-lo)' }}>{c.time}</td>
+                                <td className="mono" style={{ color: 'var(--tx-hi)' }}>{c.label}</td>
+                                <td className="mono" style={{ color: 'var(--tx-hi)' }}>{c.grossPct >= 0 ? '+' : ''}{c.grossPct.toFixed(3)}%</td>
+                                <td className={'mono ' + (c.netProfit >= 0 ? 'pos' : 'neg')}>{fmtAmt(c.netProfit, c.quoteDecimals)} {c.startAsset}</td>
+                                {!compact && <td className={'mono ' + (c.margin >= 0 ? 'pos' : 'neg')}>{c.margin >= 0 ? '+' : ''}{c.margin.toFixed(3)}%</td>}
+                                <td className={'mono ' + (c.realized != null ? (c.realized >= 0 ? 'pos' : 'neg') : '')} style={c.realized == null ? { color: 'var(--tx-lo)' } : {}}>
+                                    {c.realized != null ? fmtAmt(c.realized, c.quoteDecimals) + ' ' + c.startAsset : '—'}
+                                </td>
+                                <td><span className={'badge ' + c.status}><span className="d" />{c.statusLabel}</span></td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
         </div>
     );
 }

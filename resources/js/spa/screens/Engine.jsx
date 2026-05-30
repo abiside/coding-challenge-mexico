@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import { useNifty } from '../data/store';
 import { I } from '../nifty/icons';
-import { Lat, Toggle, NumField } from '../nifty/widgets';
+import { Lat, Toggle, NumField, CyclesPanel } from '../nifty/widgets';
 import { ResetProcessModal } from '../nifty/ResetModal';
 import { exLabel, exColor, signedMoney, relativeTime, discardLabel, fmt } from '../nifty/format';
 
@@ -118,81 +118,8 @@ function logTime(createdAt) {
     return new Date(createdAt).toTimeString().slice(0, 8);
 }
 
-/* Tabla de ciclos triangulares recibidos en vivo: muestra cada ciclo detectado
-   con su ruta, profit neto evaluado y el resultado realizado (en simulación).
-   Coexiste con el resto del Engine: los ciclos comparten store/wallets pero
-   se renderizan aparte porque su estructura es multi-pata. */
-function CyclesPanel({ cycleFeed }) {
-    const rows = (cycleFeed || []).slice(0, 12);
-
-    const STATUS_MAP = {
-        execute: { cls: 'pos', t: 'Ejecutado' },
-        reject: { cls: 'neg', t: 'Rechazado' },
-        ignore: { cls: '', t: 'Ignorado' },
-    };
-
-    return (
-        <div className="panel">
-            <div className="panel-h">
-                <I.opp style={{ width: 16, height: 16, color: 'var(--turq)' }} />
-                <h2>Arbitraje triangular (ciclos)</h2>
-                <div className="right">
-                    <span className={'pill ' + (rows.length ? 'live' : '')} style={{ fontSize: '10px', padding: '4px 9px' }}>
-                        <span className="dot" />{rows.length ? 'en vivo' : 'sin ciclos'}
-                    </span>
-                </div>
-            </div>
-            <div style={{ overflowX: 'auto' }}>
-                <table className="tbl">
-                    <thead>
-                        <tr>
-                            <th>Hora</th>
-                            <th>Ruta</th>
-                            <th>Spread bruto</th>
-                            <th>Profit neto</th>
-                            <th>Margen</th>
-                            <th>Realizado</th>
-                            <th>Estado</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {rows.length === 0 ? (
-                            <tr><td colSpan="7" className="empty-note">Sin ciclos triangulares todavía. Activa <span className="mono">ARBITRAGE_TRIANGULAR_ENABLED=true</span> y reinicia el engine.</td></tr>
-                        ) : rows.map((row, idx) => {
-                            const c = row.cycle || {};
-                            const sim = row.simulation || null;
-                            const status = STATUS_MAP[row.decision] || STATUS_MAP.reject;
-                            const detectedMs = Number(c.detected_at_ms) || (row.published_at ? Date.parse(row.published_at) : Date.now());
-                            const time = new Date(detectedMs).toTimeString().slice(0, 8);
-                            const net = Number(c.net_profit) || 0;
-                            const margin = (Number(c.net_margin) || 0) * 100;
-                            const realized = sim ? Number(sim.realized_pnl) || 0 : null;
-                            const grossBps = (Number(c.gross_spread_bps) || 0) / 100;
-                            const startAsset = c.start_asset || '';
-                            const fmtAmt = (n) => (n >= 0 ? '+' : '−') + fmt(Math.abs(n), startAsset === 'USDT' || startAsset === 'USD' ? 2 : 6);
-                            return (
-                                <tr key={idx}>
-                                    <td className="mono" style={{ color: 'var(--tx-lo)' }}>{time}</td>
-                                    <td className="mono" style={{ color: 'var(--tx-hi)' }}>{c.label || '—'}</td>
-                                    <td className="mono" style={{ color: 'var(--tx-hi)' }}>{grossBps >= 0 ? '+' : ''}{grossBps.toFixed(3)}%</td>
-                                    <td className={'mono ' + (net >= 0 ? 'pos' : 'neg')}>{fmtAmt(net)} {startAsset}</td>
-                                    <td className={'mono ' + (margin >= 0 ? 'pos' : 'neg')}>{margin >= 0 ? '+' : ''}{margin.toFixed(3)}%</td>
-                                    <td className={'mono ' + (realized != null ? (realized >= 0 ? 'pos' : 'neg') : '')} style={realized == null ? { color: 'var(--tx-lo)' } : {}}>
-                                        {realized != null ? fmtAmt(realized) + ' ' + startAsset : '—'}
-                                    </td>
-                                    <td><span className={'badge ' + status.cls}><span className="d" />{status.t}</span></td>
-                                </tr>
-                            );
-                        })}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    );
-}
-
 export default function EngineScreen() {
-    const { engine, engineLive, simulation, cycleFeed } = useNifty();
+    const { engine, engineLive, simulation, cycleFeed, cycles, cyclesSummary } = useNifty();
     const conns = engine.connections || [];
     const metrics = engine.metrics || {};
     const logs = engine.logs || [];
@@ -237,7 +164,7 @@ export default function EngineScreen() {
 
             <DangerZone />
 
-            <CyclesPanel cycleFeed={cycleFeed} />
+            <CyclesPanel cycleFeed={cycleFeed} cycles={cycles} summary={cyclesSummary} />
 
             <div className="panel">
                 <div className="panel-h"><I.engine style={{ width: 16, height: 16, color: 'var(--turq)' }} /><h2>Conexiones por exchange</h2></div>

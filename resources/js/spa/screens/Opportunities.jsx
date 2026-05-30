@@ -1,8 +1,10 @@
-/* NIFTY — Oportunidades: monitor en vivo + histórico con filtros. */
+/* NIFTY — Oportunidades: monitor en vivo + histórico con filtros.
+   Conmuta entre arbitraje de 2 patas (cross-exchange) y triangular (ciclos). */
 import { useState } from 'react';
 import { useNifty } from '../data/store';
 import { I } from '../nifty/icons';
-import { normalizeOpportunity, fmt } from '../nifty/format';
+import { normalizeOpportunity, fmt, signedMoney } from '../nifty/format';
+import { Segmented, CyclesPanel } from '../nifty/widgets';
 
 const FILTERS = [
     { v: 'all', l: 'Todas' }, { v: 'eval', l: 'En evaluación' },
@@ -10,8 +12,9 @@ const FILTERS = [
 ];
 
 export default function OppsScreen({ onOpen }) {
-    const { liveFeed, opportunities, engine } = useNifty();
+    const { liveFeed, opportunities, engine, cycleFeed, cycles, cyclesSummary } = useNifty();
     const [filter, setFilter] = useState('all');
+    const [mode, setMode] = useState('pairs');
 
     const seen = new Set(liveFeed.map((o) => o.id));
     const history = (opportunities || []).map(normalizeOpportunity).filter((o) => !seen.has(o.id));
@@ -26,6 +29,28 @@ export default function OppsScreen({ onOpen }) {
 
     return (
         <div className="content">
+            <div className="panel panel-pad" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <I.opp style={{ width: 16, height: 16, color: 'var(--fuchsia)' }} />
+                <div style={{ flex: 1, minWidth: 200 }}>
+                    <div style={{ fontWeight: 600, color: 'var(--tx-hi)' }}>Monitor de arbitraje</div>
+                    <div className="cfg-desc" style={{ margin: 0 }}>Conmuta entre oportunidades de 2 patas (cross-exchange) y ciclos triangulares (intra/cross-exchange).</div>
+                </div>
+                <Segmented value={mode} onChange={setMode} options={[{ value: 'pairs', label: '2 patas' }, { value: 'triangular', label: 'Triangular' }]} />
+            </div>
+
+            {mode === 'triangular' ? (
+                <>
+                    <div className="grid-3" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
+                        <div className="panel mtile"><div className="ml">Ciclos totales</div><div className="mv">{cyclesSummary?.cycles_total ?? 0}</div></div>
+                        <div className="panel mtile"><div className="ml">Ejecutados / hora</div><div className="mv pos">{cyclesSummary?.executed_last_hour ?? 0}</div></div>
+                        <div className="panel mtile"><div className="ml">P&L realizado (1h)</div><div className={'mv ' + ((cyclesSummary?.realized_pnl_last_hour ?? 0) >= 0 ? 'pos' : 'neg')}>{signedMoney(cyclesSummary?.realized_pnl_last_hour ?? 0)}</div></div>
+                        <div className="panel mtile"><div className="ml">P&L realizado (total)</div><div className={'mv ' + ((cyclesSummary?.realized_pnl ?? 0) >= 0 ? 'pos' : 'neg')}>{signedMoney(cyclesSummary?.realized_pnl ?? 0)}</div></div>
+                    </div>
+                    <CyclesPanel cycleFeed={cycleFeed} cycles={cycles} summary={cyclesSummary} limit={80} />
+                    <div className="muted" style={{ fontSize: 12, paddingLeft: 4 }}>Los ciclos triangulares mueven la billetera dentro de un mismo exchange (USDT→BTC→ETH→USDT) y no generan filas en el flujo de 2 patas.</div>
+                </>
+            ) : (
+            <>
             <div className="grid-3" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
                 <div className="panel mtile"><div className="ml">Detectadas / hora</div><div className="mv">{detectedHour}</div></div>
                 <div className="panel mtile"><div className="ml">En evaluación</div><div className="mv" style={{ color: 'var(--warn)' }}>{counts.eval}</div></div>
@@ -77,6 +102,8 @@ export default function OppsScreen({ onOpen }) {
                 </div>
             </div>
             <div className="muted" style={{ fontSize: 12, paddingLeft: 4 }}>Clic en cualquier fila para ver el desglose de cálculo, liquidez usada y decisión del risk manager.</div>
+            </>
+            )}
         </div>
     );
 }

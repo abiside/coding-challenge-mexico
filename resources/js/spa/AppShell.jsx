@@ -1,6 +1,7 @@
 /* NIFTY — app shell: sidebar + header + router por hash (portado del diseño). */
 import { useEffect, useState } from 'react';
 import { I } from './nifty/icons';
+import { BrandLogo } from './nifty/BrandLogo';
 import { useNifty } from './data/store';
 import { OppDrawer } from './nifty/OppDrawer';
 import { ResetProcessModal } from './nifty/ResetModal';
@@ -13,11 +14,13 @@ import PerfScreen from './screens/Performance';
 import EngineScreen from './screens/Engine';
 import ConfigScreen from './screens/Config';
 import AutopilotScreen from './screens/Autopilot';
+import MeanReversionScreen from './screens/MeanReversion';
 
 const NAV_MONITOR = [
     ['Dashboard', 'dash', 'dash'],
     ['Mercado', 'market', 'market'],
     ['Oportunidades', 'opp', 'opp'],
+    ['Reversión a la media', 'meanrev', 'vol'],
     ['Trades', 'trade', 'trade'],
     ['Wallets', 'wallet', 'wallet'],
     ['Rendimiento', 'perf', 'perf'],
@@ -32,6 +35,7 @@ const META = {
     dash: { title: 'Dashboard', crumb: 'BTC/USDT · arbitraje multi-exchange' },
     market: { title: 'Mercado', crumb: 'Order book consolidado · multi-exchange' },
     opp: { title: 'Oportunidades', crumb: 'Monitor de arbitraje en tiempo real' },
+    meanrev: { title: 'Reversión a la media', crumb: 'Estrategia spot USDT · Binance · sockets dinámicos' },
     trade: { title: 'Trades', crumb: 'Historial de operaciones simuladas' },
     wallet: { title: 'Wallets', crumb: 'Balances y distribución de capital' },
     perf: { title: 'Rendimiento', crumb: 'Análisis de P&L y métricas de calidad' },
@@ -46,13 +50,8 @@ function Sidebar({ active, onNav }) {
     const online = conns.filter((c) => c.conn === 'ok').length;
     return (
         <aside className="side">
-            <div className="brand">
-                <div className="brand-mark"><I.bolt style={{ width: 16, height: 16, color: '#0a0710' }} /></div>
-                <div>
-                    <div className="brand-name">Nifty</div>
-                    <div className="brand-sub">Arbitrage Engine</div>
-                </div>
-            </div>
+            <BrandLogo tagline="Arbitrage Engine" />
+
             <div className="nav-label">Monitoreo</div>
             {NAV_MONITOR.map(([name, key, icon]) => {
                 const Icon = I[icon];
@@ -78,6 +77,39 @@ function Sidebar({ active, onNav }) {
                 <div className="row"><span>Circuit breaker</span><span className="v" style={{ color: 'var(--profit)' }}>{engine.metrics?.circuit_breaker_enabled ? 'ON' : 'OFF'}</span></div>
             </div>
         </aside>
+    );
+}
+
+/* Indicador + toggle del modo simulación (deriva sintética de precios), junto al
+   "Modo Demo". Refleja el estado real de `simulation_enabled` y permite
+   encenderlo/apagarlo desde el header; el engine lo aplica en su próximo
+   reconcile (~3s), sin reiniciar el worker. */
+function SimToggle() {
+    const { settings, actions } = useNifty();
+    const [working, setWorking] = useState(false);
+    if (!settings) return null;
+
+    const on = settings.simulation_enabled === true;
+    const toggle = async () => {
+        setWorking(true);
+        try {
+            await actions.saveSettings({
+                simulation_enabled: !on,
+                simulation_max_drift_pct: settings.simulation_max_drift_pct || 0.5,
+            });
+            await actions.loadSettings();
+        } catch { /* el error se refleja vía store */ } finally {
+            setWorking(false);
+        }
+    };
+
+    return (
+        <button type="button" className={'pill pill-btn ' + (on ? 'live' : 'sim-off')} onClick={toggle} disabled={working}
+            title={on
+                ? 'Simulación de oportunidades ACTIVA · clic para apagar'
+                : 'Simulación de oportunidades apagada · clic para encender'}>
+            <span className="dot" />{working ? 'Aplicando…' : 'Simulación ' + (on ? 'ON' : 'OFF')}
+        </button>
     );
 }
 
@@ -113,9 +145,10 @@ function Header({ active, user, onLogout }) {
                 <div className="crumb">{m.crumb}</div>
             </div>
             <span className={'pill ' + (paused ? 'demo' : 'live')}><span className="dot" />{paused ? 'Engine pausado' : 'Engine activo'}</span>
+            <SimToggle />
             <button type="button" className="pill demo pill-btn" onClick={() => setResetOpen(true)}
                 title="Reiniciar el proceso · borra toda la data y challengers">
-                <span className="dot" />Modo Demo
+                <span className="dot" />Modo Demo<I.reset className="pill-reset" />
             </button>
             <ResetProcessModal open={resetOpen} onClose={() => setResetOpen(false)} />
             <div className="hdr-stats">
@@ -195,6 +228,7 @@ export default function AppShell({ user, onLogout }) {
     switch (active) {
         case 'market': view = <MarketScreen />; break;
         case 'opp': view = <OppsScreen onOpen={onOpen} />; break;
+        case 'meanrev': view = <MeanReversionScreen />; break;
         case 'trade': view = <TradesScreen />; break;
         case 'wallet': view = <WalletsScreen />; break;
         case 'perf': view = <PerfScreen />; break;
