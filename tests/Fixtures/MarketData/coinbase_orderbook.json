@@ -1,0 +1,18 @@
+{
+    "channel": "l2_data",
+    "client_id": "",
+    "timestamp": "2024-01-01T00:00:00Z",
+    "sequence_num": 100,
+    "events": [
+        {
+            "type": "snapshot",
+            "product_id": "BTC-USD",
+            "updates": [
+                {"side": "bid", "event_time": "2024-01-01T00:00:00Z", "price_level": "29199.99", "new_quantity": "0.5"},
+                {"side": "bid", "event_time": "2024-01-01T00:00:00Z", "price_level": "29199.50", "new_quantity": "1.2"},
+                {"side": "offer", "event_time": "2024-01-01T00:00:00Z", "price_level": "29200.01", "new_quantity": "1.2"},
+                {"side": "offer", "event_time": "2024-01-01T00:00:00Z", "price_level": "29200.50", "new_quantity": "0.8"}
+            ]
+        }
+    ]
+}

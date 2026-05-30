@@ -1,0 +1,21 @@
+{
+    "channel": "book",
+    "type": "snapshot",
+    "data": [
+        {
+            "symbol": "BTC/USD",
+            "bids": [
+                {"price": 29199.99, "qty": 0.5},
+                {"price": 29199.5, "qty": 1.2},
+                {"price": 29198.8, "qty": 2.1}
+            ],
+            "asks": [
+                {"price": 29200.01, "qty": 1.2},
+                {"price": 29200.5, "qty": 0.8},
+                {"price": 29201.0, "qty": 3.4}
+            ],
+            "checksum": 1234567890,
+            "timestamp": "2024-01-01T00:00:00Z"
+        }
+    ]
+}
