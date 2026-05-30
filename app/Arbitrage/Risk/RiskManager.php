@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace App\Arbitrage\Risk;
 
-use App\Arbitrage\Engine\DTO\EvaluatedOpportunity;
+use App\Arbitrage\Contracts\ProfitableTrade;
 use App\Arbitrage\Risk\Guards\Guard;
 
 /**
  * Orquesta los guards de riesgo y el circuit breaker para emitir una decisión
  * final clara: ejecutar, rechazar o ignorar. No muta balances ni persiste.
+ *
+ * Es agnóstico al tipo de operación: opera sobre `ProfitableTrade`, por lo
+ * que sirve para oportunidades de 2 patas y ciclos triangulares por igual.
  */
 final class RiskManager
 {
@@ -22,15 +25,11 @@ final class RiskManager
     ) {
     }
 
-    public function assess(EvaluatedOpportunity $opportunity, ?int $nowMs = null): RiskDecision
+    public function assess(ProfitableTrade $opportunity, ?int $nowMs = null): RiskDecision
     {
         $nowMs ??= (int) (microtime(true) * 1000);
 
-        $cbKey = CircuitBreaker::keyFor(
-            $opportunity->symbol(),
-            $opportunity->buyExchange(),
-            $opportunity->sellExchange(),
-        );
+        $cbKey = $opportunity->circuitBreakerKey();
 
         if ($this->circuitBreaker->isOpen($cbKey, $nowMs)) {
             return RiskDecision::ignore('circuit_breaker_open: '.$cbKey);
@@ -49,6 +48,6 @@ final class RiskManager
 
         $this->circuitBreaker->recordSuccess($cbKey);
 
-        return RiskDecision::execute($opportunity->liquidity->executableBaseVolume);
+        return RiskDecision::execute($opportunity->executableVolume());
     }
 }

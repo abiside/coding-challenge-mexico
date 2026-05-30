@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Api\V1\Arbitrage;
 
+use App\Arbitrage\Optimization\ChampionPromotion;
 use App\Arbitrage\Optimization\StrategyBounds;
 use App\Http\Controllers\Controller;
 use App\Models\ArbitrageSetting;
@@ -234,14 +235,49 @@ class StrategyController extends Controller
             ->limit(50)
             ->get(['strategy_id', 'type', 'payload', 'created_at']);
 
-        $data = $events->map(static function (BotEvent $event): array {
-            $source = is_array($event->payload) ? ($event->payload['source'] ?? null) : null;
+        // Rendimiento de cada champion lanzado. Como cada champion arranca en
+        // cero, la suma de su realized_pnl ES su ganancia neta durante su reinado
+        // y el promedio por trade (SUM/COUNT) su rendimiento medio. El frontend
+        // compara el PROMEDIO del champion actual contra el del anterior para el
+        // % de cambio mostrado en el periodo de cada champion.
+        $championIds = $events->pluck('strategy_id')->filter()->unique()->values()->all();
+        $statsByStrategy = [];
+        if ($championIds !== []) {
+            $rows = Trade::query()
+                ->where('user_id', $userId)
+                ->whereIn('strategy_id', $championIds)
+                ->selectRaw('strategy_id, SUM(realized_pnl) AS net, COUNT(*) AS trades')
+                ->groupBy('strategy_id')
+                ->get();
+
+            foreach ($rows as $row) {
+                $sid = (int) $row->strategy_id;
+                $trades = (int) $row->trades;
+                $net = (float) $row->net;
+                $statsByStrategy[$sid] = [
+                    'net' => $net,
+                    'avg' => $trades > 0 ? $net / $trades : 0.0,
+                    'trades' => $trades,
+                ];
+            }
+        }
+
+        $data = $events->map(static function (BotEvent $event) use ($statsByStrategy): array {
+            $payload = is_array($event->payload) ? $event->payload : [];
+            $generation = isset($payload['generation']) ? (int) $payload['generation'] : null;
+            $sid = $event->strategy_id !== null ? (int) $event->strategy_id : null;
+            $stats = $sid !== null ? ($statsByStrategy[$sid] ?? null) : null;
 
             return [
                 'ms' => (int) ($event->created_at?->getTimestampMs() ?? 0),
-                'strategy_id' => $event->strategy_id !== null ? (int) $event->strategy_id : null,
+                'strategy_id' => $sid,
+                'champion_id' => isset($payload['champion_id']) ? (int) $payload['champion_id'] : null,
+                'generation' => $generation,
+                'net_profit' => $stats !== null ? round($stats['net'], 4) : 0.0,
+                'avg_profit' => $stats !== null ? round($stats['avg'], 6) : 0.0,
+                'trades' => $stats !== null ? $stats['trades'] : 0,
                 'manual' => $event->type === 'autopilot.promotion.manual',
-                'source' => $source,
+                'source' => $payload['source'] ?? null,
                 'label' => 'Nuevo champion',
             ];
         })->values();
@@ -270,7 +306,7 @@ class StrategyController extends Controller
         ]);
     }
 
-    public function promote(Request $request, int $id): JsonResponse
+    public function promote(Request $request, int $id, ChampionPromotion $promotion): JsonResponse
     {
         $userId = (int) $request->user()->id;
         $challenger = ArbitrageStrategy::where('user_id', $userId)
@@ -278,30 +314,20 @@ class StrategyController extends Controller
             ->findOrFail($id);
 
         $setting = ArbitrageSetting::where('user_id', $userId)->firstOrFail();
-        $config = (array) $challenger->config;
-        $thresholds = (array) ($config['thresholds'] ?? []);
 
-        $setting->fill([
-            'symbols' => (array) ($config['symbols'] ?? $setting->symbols),
-            'min_net_profit' => (float) ($thresholds['min_net_profit'] ?? $setting->min_net_profit),
-            'min_net_margin' => (float) ($thresholds['min_net_margin'] ?? $setting->min_net_margin),
-            'min_base_volume' => (float) ($thresholds['min_base_volume'] ?? $setting->min_base_volume),
-            'max_base_volume' => (float) ($thresholds['max_base_volume'] ?? $setting->max_base_volume),
-            'freshness_ms' => (int) ($config['freshness_ms'] ?? $setting->freshness_ms),
-            'latency_max_ms' => (int) ($config['latency']['max_ms'] ?? $setting->latency_max_ms),
+        $champion = $promotion->promote(
+            $userId,
+            $setting,
+            $challenger,
+            (array) config('arbitrage'),
+            source: 'user',
+            manual: true,
+        );
+
+        return response()->json([
+            'message' => 'Promoción aplicada. El nuevo champion arranca en cero; el engine lo levanta en segundos.',
+            'champion_id' => $champion->id,
         ]);
-        $setting->save();
-
-        BotEvent::create([
-            'user_id' => $userId,
-            'strategy_id' => $challenger->id,
-            'type' => 'autopilot.promotion.manual',
-            'level' => 'info',
-            'payload' => ['challenger_id' => $challenger->id, 'origin' => 'user'],
-            'created_at' => now(),
-        ]);
-
-        return response()->json(['message' => 'Promoción aplicada. El champion se reconciliará en segundos.']);
     }
 
     public function autopilot(Request $request): JsonResponse

@@ -132,11 +132,18 @@ class OptimizeStrategiesTest extends TestCase
             'user_id' => $user->id,
             'type' => 'autopilot.judge',
         ]);
-        $this->assertDatabaseHas('bot_events', [
-            'user_id' => $user->id,
-            'type' => 'autopilot.promotion',
-            'strategy_id' => $winner->id,
-        ]);
+
+        // El evento de promoción apunta al NUEVO champion (registro nuevo que
+        // arranca en cero); el challenger ganador queda en payload.challenger_id.
+        // Así promotions()/series() pueden sumar el P&L del champion por strategy_id.
+        $newChampion = ArbitrageStrategy::where('user_id', $user->id)
+            ->where('status', ArbitrageStrategy::STATUS_CHAMPION)
+            ->firstOrFail();
+        $promotionEvent = BotEvent::where('user_id', $user->id)
+            ->where('type', 'autopilot.promotion')
+            ->firstOrFail();
+        $this->assertSame((int) $newChampion->id, (int) $promotionEvent->strategy_id);
+        $this->assertSame($winner->id, (int) ($promotionEvent->payload['challenger_id'] ?? null));
     }
 
     private function makeWinner(User $user, ArbitrageStrategy $champion): ArbitrageStrategy

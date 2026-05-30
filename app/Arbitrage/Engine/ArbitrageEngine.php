@@ -22,8 +22,8 @@ use Psr\Log\LoggerInterface;
 
 /**
  * Orquesta el pipeline completo de arbitraje disparado por cada update de
- * order book: detección -> liquidez/slippage -> rentabilidad -> validación de
- * wallet -> riesgo -> simulación -> persistencia/publicación.
+ * order book: detecci?n -> liquidez/slippage -> rentabilidad -> validaci?n de
+ * wallet -> riesgo -> simulaci?n -> persistencia/publicaci?n.
  *
  * No conoce transporte (Redis/WS); recibe snapshots ya normalizados.
  */
@@ -55,12 +55,17 @@ final class ArbitrageEngine
      */
     public function onSnapshot(OrderBookSnapshot $snapshot, ?int $receivedAtMs = null): array
     {
+        // Reloj monot?nico de alta resoluci?n anclado al instante en que el
+        // order book "aparece" en el engine; mide la latencia de evaluaci?n
+        // (aparici?n -> decisi?n) sin verse afectado por ajustes de reloj.
+        $arrivalNs = hrtime(true);
+
         $updated = $this->store->apply($snapshot, $receivedAtMs);
         $nowMs = $receivedAtMs ?? (int) (microtime(true) * 1000);
 
         $processed = [];
         foreach ($this->scanner->scan($updated, $nowMs) as $candidate) {
-            $outcome = $this->process($candidate, $nowMs);
+            $outcome = $this->process($candidate, $nowMs, $arrivalNs);
             if ($outcome !== null) {
                 $processed[] = $outcome;
             }
@@ -69,7 +74,7 @@ final class ArbitrageEngine
         return $processed;
     }
 
-    private function process(OpportunityCandidate $candidate, int $nowMs): ?ProcessedOpportunity
+    private function process(OpportunityCandidate $candidate, int $nowMs, int $arrivalNs): ?ProcessedOpportunity
     {
         // 5) Liquidez / slippage al volumen objetivo (limitado por profundidad).
         $liquidity = $this->liquidity->evaluate($candidate, $this->maxBaseVolume);
@@ -94,7 +99,7 @@ final class ArbitrageEngine
         $profit = $this->profitability->evaluate($candidate, $liquidity, $combinedAge);
         $evaluated = new EvaluatedOpportunity($candidate, $liquidity, $profit);
 
-        // 7) Validación de wallet: define volumen final por balances.
+        // 7) Validaci?n de wallet: define volumen final por balances.
         $buyFeeRate = $this->fees->for($candidate->buyExchange());
         $walletMax = $this->walletValidator->maxExecutableVolume(
             $candidate,
@@ -109,7 +114,7 @@ final class ArbitrageEngine
                 $this->minBaseVolume,
             ));
 
-            return $this->finalize($evaluated, $decision, null);
+            return $this->finalize($evaluated, $decision, null, $arrivalNs);
         }
 
         // Si el balance limita el volumen, recalcular liquidez/rentabilidad.
@@ -119,32 +124,36 @@ final class ArbitrageEngine
             $evaluated = new EvaluatedOpportunity($candidate, $liquidity, $profit);
         }
 
-        // 8) Riesgo: decisión final tipada.
+        // 8) Riesgo: decisi?n final tipada.
         $decision = $this->riskManager->assess($evaluated, $nowMs);
 
-        // 9) Ejecución simulada (single-writer) solo si se aprueba.
+        // 9) Ejecuci?n simulada (single-writer) solo si se aprueba.
         $simulation = null;
         if ($decision->shouldExecute()) {
             $simulation = $this->simulator->simulate($evaluated, $this->idempotencyKey($candidate));
         }
 
-        return $this->finalize($evaluated, $decision, $simulation);
+        return $this->finalize($evaluated, $decision, $simulation, $arrivalNs);
     }
 
     private function finalize(
         EvaluatedOpportunity $evaluated,
         RiskDecision $decision,
         ?SimulationResult $simulation,
+        int $arrivalNs,
     ): ProcessedOpportunity {
-        // 10) Persistencia y publicación desacopladas (no en hot path real).
+        // Latencia de evaluaci?n: aparici?n del order book -> decisi?n, en ?s.
+        $evaluated->setEvaluationLatencyUs((int) round((hrtime(true) - $arrivalNs) / 1000));
+
+        // 10) Persistencia y publicaci?n desacopladas (no en hot path real).
         if ($decision->decision !== Decision::Ignore) {
             $this->recorder->record($evaluated, $decision, $simulation);
         }
         $this->dashboard->publishDecision($evaluated, $decision, $simulation);
 
         if ($decision->decision !== Decision::Execute) {
-            // Embudo de descartes: razón normalizada del primer motivo de la
-            // decisión (p. ej. "risk:low_net_profit", "risk:insufficient_balance").
+            // Embudo de descartes: raz?n normalizada del primer motivo de la
+            // decisi?n (p. ej. "risk:low_net_profit", "risk:insufficient_balance").
             $this->discards?->recordDiscard('risk:'.$this->reasonKey($decision));
         }
 
@@ -159,6 +168,7 @@ final class ArbitrageEngine
             'total_costs' => round($evaluated->profitability->totalCosts(), 8),
             'volume' => $evaluated->liquidity->executableBaseVolume,
             'final_volume' => $decision->finalVolume,
+            'evaluation_latency_us' => $evaluated->evaluationLatencyUs(),
             'executed' => $simulation !== null && ! $simulation->duplicate,
         ]);
 
@@ -178,8 +188,8 @@ final class ArbitrageEngine
     }
 
     /**
-     * Extrae una clave estable del primer motivo de la decisión, descartando
-     * los valores dinámicos tras ":" (p. ej. "low_net_profit: net=..." →
+     * Extrae una clave estable del primer motivo de la decisi?n, descartando
+     * los valores din?micos tras ":" (p. ej. "low_net_profit: net=..." ���
      * "low_net_profit"). Mantiene acotada la cardinalidad del embudo.
      */
     private function reasonKey(RiskDecision $decision): string

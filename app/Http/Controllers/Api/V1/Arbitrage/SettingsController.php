@@ -83,7 +83,7 @@ class SettingsController extends Controller
         return [
             'exchanges' => array_values((array) config('marketdata.exchanges', [])),
             'symbols' => array_values((array) config('arbitrage.symbols', [])),
-            'assets' => ['USDT', 'BTC', 'ETH'],
+            'assets' => ['USDT', 'USD', 'BTC', 'ETH'],
         ];
     }
 }

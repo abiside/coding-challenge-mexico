@@ -176,12 +176,16 @@ return [
     */
 
     'initial_balances' => [
-        'binance' => ['USDT' => 100000.0, 'BTC' => 2.0],
-        'kraken' => ['USDT' => 100000.0, 'BTC' => 2.0],
-        'coinbase' => ['USDT' => 100000.0, 'BTC' => 2.0],
-        'bybit' => ['USDT' => 100000.0, 'BTC' => 2.0],
-        'okx' => ['USDT' => 100000.0, 'BTC' => 2.0],
-        'bitget' => ['USDT' => 100000.0, 'BTC' => 2.0],
+        // Saldo de cada activo por exchange. Incluye ETH para habilitar
+        // arbitraje triangular intra-exchange (USDT->BTC->ETH->USDT).
+        // Las cotizaciones por defecto son en USDT en todos los exchanges
+        // (consistente con `config/marketdata.php`).
+        'binance' => ['USDT' => 100000.0, 'BTC' => 2.0, 'ETH' => 30.0],
+        'kraken' => ['USDT' => 100000.0, 'BTC' => 2.0, 'ETH' => 30.0],
+        'coinbase' => ['USDT' => 100000.0, 'BTC' => 2.0, 'ETH' => 30.0],
+        'bybit' => ['USDT' => 100000.0, 'BTC' => 2.0, 'ETH' => 30.0],
+        'okx' => ['USDT' => 100000.0, 'BTC' => 2.0, 'ETH' => 30.0],
+        'bitget' => ['USDT' => 100000.0, 'BTC' => 2.0, 'ETH' => 30.0],
     ],
 
     /*
@@ -238,4 +242,44 @@ return [
     */
 
     'evaluation_interval_seconds' => (int) env('ARBITRAGE_EVAL_INTERVAL', 60),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Arbitraje triangular (ciclos multi-pata)
+    |--------------------------------------------------------------------------
+    |
+    | Cuando está activo, el engine evalúa ciclos cerrados de conversiones
+    | (USDT->BTC->ETH->USDT intra-exchange o cross-exchange) además de las
+    | oportunidades de 2 patas. Reutiliza order book store, wallets, fees y
+    | risk manager. Ver: app/Arbitrage/Triangular.
+    |
+    | - max_cycle_length: cantidad máxima de saltos por ciclo (3 = triangular).
+    | - cross_exchange: incluye aristas de "equivalencia de inventario" entre
+    |   exchanges (modelo del 2-patas: mantenemos saldo en ambos wallets).
+    | - transfer_cost: costo por arista de equivalencia (fracción), default 0.
+    | - start_assets: whitelist de activos de partida del ciclo.
+    | - thresholds: umbrales en unidades del activo de partida.
+    |
+    */
+
+    'triangular' => [
+        'enabled' => (bool) env('ARBITRAGE_TRIANGULAR_ENABLED', false),
+        'max_cycle_length' => (int) env('ARBITRAGE_TRIANGULAR_MAX_LENGTH', 3),
+        'cross_exchange' => (bool) env('ARBITRAGE_TRIANGULAR_CROSS_EXCHANGE', true),
+        'transfer_cost' => (float) env('ARBITRAGE_TRIANGULAR_TRANSFER_COST', 0.0),
+        'start_assets' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('ARBITRAGE_TRIANGULAR_START_ASSETS', 'USDT,USD'))
+        ))),
+        'thresholds' => [
+            // Profit neto mínimo en activo de partida (USDT, USD...).
+            'min_net_profit' => (float) env('ARBITRAGE_TRIANGULAR_MIN_NET_PROFIT', 1.0),
+            // Margen neto mínimo como fracción del capital invertido.
+            'min_net_margin' => (float) env('ARBITRAGE_TRIANGULAR_MIN_NET_MARGIN', 0.0005),
+            // Cantidad mínima del activo de partida para ejecutar.
+            'min_start_amount' => (float) env('ARBITRAGE_TRIANGULAR_MIN_START', 10.0),
+            // Cantidad máxima del activo de partida por ciclo.
+            'max_start_amount' => (float) env('ARBITRAGE_TRIANGULAR_MAX_START', 10000.0),
+        ],
+    ],
 ];

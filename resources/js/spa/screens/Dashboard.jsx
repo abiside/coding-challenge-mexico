@@ -1,19 +1,33 @@
 /* NIFTY — Dashboard (portado del diseño, cableado a datos reales). */
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { api } from '../client';
 import { useNifty } from '../data/store';
 import { I } from '../nifty/icons';
 import { Kpi, BigChart, OppRow, Lat, Segmented } from '../nifty/widgets';
-import { deriveKpis, deriveChartSeries, deriveWinRateSpark, windowTotal, normalizeOpportunity, deriveMarketRows, fmt, signedMoney } from '../nifty/format';
+import { deriveKpis, deriveChartSeries, equityToChartSeries, deriveWinRateSpark, windowTotal, normalizeOpportunity, deriveMarketRows, fmt, signedMoney } from '../nifty/format';
 
 export default function DashboardScreen({ onOpen }) {
     const { trades, opportunities, market, liveFeed, engine, promotions } = useNifty();
     const [tf, setTf] = useState('week');
 
+    // Curva de equity ESTABLE desde el servidor: evita que la historia se
+    // reescriba al deslizarse el feed acotado de 200 trades. Se refresca al
+    // cambiar el timeframe y en intervalo.
+    const [equity, setEquity] = useState(null);
+    useEffect(() => {
+        let alive = true;
+        const load = () => api(`/arbitrage/trades/equity?tf=${tf}`).then((r) => { if (alive) setEquity(r); }).catch(() => {});
+        load();
+        const id = setInterval(load, 6000);
+        return () => { alive = false; clearInterval(id); };
+    }, [tf]);
+
     const k = deriveKpis(trades);
-    const chartSeries = deriveChartSeries(trades, tf);
+    const chartSeries = equity ? equityToChartSeries(equity, promotions) : deriveChartSeries(trades, tf, promotions);
     const chart = chartSeries.values;
     const winSpark = deriveWinRateSpark(trades);
-    const tfTotal = windowTotal(trades, tf);
+    const tfTotal = equity ? equity.window_total : windowTotal(trades, tf);
+    const pnlValue = equity ? signedMoney(equity.total) : k.pnl.value;
 
     // Feed: eventos en vivo + relleno con histórico normalizado.
     const seen = new Set(liveFeed.map((o) => o.id));
@@ -27,7 +41,7 @@ export default function DashboardScreen({ onOpen }) {
     return (
         <div className="content">
             <div className="kpis">
-                <Kpi hero label="P&L acumulado" icon={I.pnl} value={k.pnl.value}
+                <Kpi hero label="P&L acumulado" icon={I.pnl} value={pnlValue}
                     detail={k.pnl.detail} spark={chart} sparkColor="#2ff0cf" />
                 <Kpi label="Ganancia neta del día" icon={I.day} value={k.day.value}
                     detail={k.day.detail} sparkColor="#2fe3b6" />

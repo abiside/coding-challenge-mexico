@@ -4,12 +4,17 @@ declare(strict_types=1);
 
 namespace App\Arbitrage\Risk\Guards;
 
-use App\Arbitrage\Engine\DTO\EvaluatedOpportunity;
+use App\Arbitrage\Contracts\ProfitableTrade;
 use App\Arbitrage\Risk\RiskDecision;
 
 /**
- * Ignora oportunidades cuyo volumen ejecutable es demasiado pequeño para ser
- * accionable (ruido de liquidez o balance casi agotado).
+ * Ignora operaciones cuyo volumen ejecutable es demasiado pequeño para ser
+ * accionables (ruido de liquidez o balance casi agotado).
+ *
+ * Para oportunidades de 2 patas, el volumen está en activo base (p. ej. BTC);
+ * para ciclos triangulares, el volumen está expresado en el activo de partida
+ * (start asset). El umbral configurado se interpreta en la unidad del trade
+ * evaluado.
  */
 final class MinVolumeGuard implements Guard
 {
@@ -17,9 +22,9 @@ final class MinVolumeGuard implements Guard
     {
     }
 
-    public function evaluate(EvaluatedOpportunity $opportunity, int $nowMs): ?RiskDecision
+    public function evaluate(ProfitableTrade $opportunity, int $nowMs): ?RiskDecision
     {
-        $volume = $opportunity->liquidity->executableBaseVolume;
+        $volume = $opportunity->executableVolume();
 
         if ($volume < $this->minBaseVolume) {
             return RiskDecision::ignore(sprintf(

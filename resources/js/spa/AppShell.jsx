@@ -130,6 +130,46 @@ function Header({ active, user, onLogout }) {
     );
 }
 
+const SIM_INVITE_KEY = 'nifty_sim_invite_dismissed';
+
+function SimulatorInvite() {
+    const { settings, simulation, actions } = useNifty();
+    const [dismissed, setDismissed] = useState(() => localStorage.getItem(SIM_INVITE_KEY) === '1');
+    const [working, setWorking] = useState(false);
+
+    if (!settings || settings.simulation_enabled !== false || dismissed) return null;
+
+    const dismiss = () => { localStorage.setItem(SIM_INVITE_KEY, '1'); setDismissed(true); };
+
+    const enable = async () => {
+        setWorking(true);
+        try {
+            await actions.saveSettings({ simulation_enabled: true, simulation_max_drift_pct: settings.simulation_max_drift_pct || 0.5 });
+            if (!simulation.active) await actions.startStop();
+            await actions.loadSettings();
+            await actions.refreshSlow();
+        } catch { /* el error se refleja vía store */ } finally { setWorking(false); }
+    };
+
+    return (
+        <div className="panel panel-pad" style={{ margin: '16px 30px 0', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', justifyContent: 'space-between', borderLeft: '3px solid var(--accent)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 280, flex: 1 }}>
+                <div className="brand-mark" style={{ flex: 'none' }}><I.bolt style={{ width: 16, height: 16, color: '#0a0710' }} /></div>
+                <div>
+                    <div style={{ fontWeight: 600, color: 'var(--tx-hi)' }}>Enciende el simulador de oportunidades</div>
+                    <div className="cfg-desc">En mercado real los spreads casi nunca cubren los fees. El simulador inyecta una deriva sintética de precios para crear escenarios rentables (2 patas y ciclos triangulares) y ver el motor operar.</div>
+                </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <button className="btn" onClick={dismiss}>Más tarde</button>
+                <button className="btn primary" onClick={enable} disabled={working}>
+                    <I.bolt style={{ width: 14, height: 14 }} />{working ? 'Encendiendo…' : 'Encender simulador'}
+                </button>
+            </div>
+        </div>
+    );
+}
+
 export default function AppShell({ user, onLogout }) {
     const [active, setActive] = useState(() => {
         const h = (location.hash || '').replace('#', '');
@@ -163,6 +203,7 @@ export default function AppShell({ user, onLogout }) {
             <Sidebar active={active} onNav={setActive} />
             <div className="main">
                 <Header active={active} user={user} onLogout={onLogout} />
+                <SimulatorInvite />
                 {view}
             </div>
             <OppDrawer o={open} onClose={() => setOpen(null)} />

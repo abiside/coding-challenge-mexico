@@ -52,6 +52,23 @@ final class StrategyResolver
     }
 
     /**
+     * Garantiza que exista UN champion estable para el usuario.
+     *
+     * La identidad del champion la posee EXCLUSIVAMENTE el ciclo de promoción
+     * (ChampionPromotion). Aquí NO recreamos el champion ante un cambio de hash:
+     * hacerlo lo dejaba "fresco" (sin trades) cada vez que la config base de
+     * `config('arbitrage')` derivaba (cache/WIP/restart), desincronizándolo de
+     * sus challengers y mostrándolo "sin datos".
+     *
+     * Comportamiento:
+     *  - Si hay champion(s): conserva el más reciente como canónico y archiva
+     *    cualquier duplicado (defensa ante carreras). Devuelve su identidad y
+     *    su histórico intactos.
+     *  - En modo MANUAL (autopilot apagado): si el usuario editó sus settings,
+     *    sincroniza la config del champion IN-PLACE (mismo id) para que el
+     *    cambio surta efecto sin perder el historial de trades.
+     *  - Si no existe ninguno: hace bootstrap creando el champion base.
+     *
      * @param  array<string, mixed>  $baseConfig
      */
     public function ensureChampion(int $userId, ArbitrageSetting $setting, array $baseConfig): ArbitrageStrategy
@@ -59,30 +76,42 @@ final class StrategyResolver
         $config = $setting->toEngineConfig($baseConfig);
         $hash = ArbitrageStrategy::hashConfig($config);
 
-        $current = ArbitrageStrategy::where('user_id', $userId)
+        $champions = ArbitrageStrategy::where('user_id', $userId)
             ->where('status', ArbitrageStrategy::STATUS_CHAMPION)
-            ->latest('id')
-            ->first();
+            ->orderByDesc('id')
+            ->get();
 
-        if ($current !== null && $current->config_hash === $hash) {
-            return $current;
+        if ($champions->isNotEmpty()) {
+            $canonical = $champions->first();
+
+            // Unicidad: archiva cualquier otro champion duplicado.
+            $staleIds = $champions->where('id', '!=', $canonical->id)->pluck('id');
+            if ($staleIds->isNotEmpty()) {
+                ArbitrageStrategy::whereIn('id', $staleIds)->update([
+                    'status' => ArbitrageStrategy::STATUS_ARCHIVED,
+                    'archived_at' => now(),
+                ]);
+            }
+
+            // Modo manual: refleja ediciones de settings sin cambiar de identidad.
+            if (! $setting->autopilot_enabled && (string) $canonical->config_hash !== $hash) {
+                $canonical->forceFill([
+                    'config' => $config,
+                    'config_hash' => $hash,
+                ])->save();
+            }
+
+            return $canonical;
         }
 
-        if ($current !== null) {
-            // Settings cambiaron: archiva el champion anterior para auditoría.
-            $current->update([
-                'status' => ArbitrageStrategy::STATUS_ARCHIVED,
-                'archived_at' => now(),
-            ]);
-        }
-
+        // Bootstrap: aún no hay champion para este usuario.
         return ArbitrageStrategy::create([
             'user_id' => $userId,
             'name' => 'Champion '.now()->format('Y-m-d H:i'),
             'status' => ArbitrageStrategy::STATUS_CHAMPION,
             'origin' => ArbitrageStrategy::ORIGIN_BASELINE,
-            'parent_id' => $current?->id,
-            'generation' => $current ? ((int) $current->generation + 1) : 0,
+            'parent_id' => null,
+            'generation' => 0,
             'config' => $config,
             'config_hash' => $hash,
             'promoted_at' => now(),

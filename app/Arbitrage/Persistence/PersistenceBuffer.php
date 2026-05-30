@@ -8,6 +8,7 @@ use App\Models\BotEvent;
 use App\Models\Opportunity;
 use App\Models\Trade;
 use App\Models\TradeFill;
+use App\Models\TriangularOpportunity;
 use Illuminate\Support\Facades\DB;
 use Psr\Log\LoggerInterface;
 use Throwable;
@@ -28,6 +29,11 @@ final class PersistenceBuffer
      * @var array<int, array<string, mixed>>
      */
     private array $events = [];
+
+    /**
+     * @var array<int, array<string, mixed>>
+     */
+    private array $cycles = [];
 
     public function __construct(
         private readonly LoggerInterface $logger,
@@ -65,24 +71,38 @@ final class PersistenceBuffer
         }
     }
 
+    /**
+     * @param  array<string, mixed>  $cycle  fila para `triangular_opportunities`
+     */
+    public function pushCycle(array $cycle): void
+    {
+        $this->cycles[] = $cycle;
+
+        if ($this->size() >= $this->flushSize) {
+            $this->flush();
+        }
+    }
+
     public function size(): int
     {
-        return count($this->items) + count($this->events);
+        return count($this->items) + count($this->events) + count($this->cycles);
     }
 
     public function flush(): void
     {
-        if ($this->items === [] && $this->events === []) {
+        if ($this->items === [] && $this->events === [] && $this->cycles === []) {
             return;
         }
 
         $items = $this->items;
         $events = $this->events;
+        $cycles = $this->cycles;
         $this->items = [];
         $this->events = [];
+        $this->cycles = [];
 
         try {
-            DB::transaction(function () use ($items, $events): void {
+            DB::transaction(function () use ($items, $events, $cycles): void {
                 foreach ($items as $item) {
                     $opportunity = Opportunity::create($item['opportunity']);
 
@@ -98,6 +118,10 @@ final class PersistenceBuffer
                     }
                 }
 
+                foreach ($cycles as $cycle) {
+                    TriangularOpportunity::create($cycle);
+                }
+
                 if ($events !== []) {
                     BotEvent::insert($events);
                 }
@@ -107,6 +131,7 @@ final class PersistenceBuffer
                 'error' => $e->getMessage(),
                 'items' => count($items),
                 'events' => count($events),
+                'cycles' => count($cycles),
             ]);
         }
     }

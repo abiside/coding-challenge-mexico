@@ -73,8 +73,25 @@ final class CircuitBreaker
         }
     }
 
-    public static function keyFor(string $symbol, string $buyExchange, string $sellExchange): string
+    /**
+     * Clave estable para una oportunidad cross-exchange de 2 patas. Se conserva
+     * `keyFor` como alias retro-compatible con tests/llamadas existentes.
+     */
+    public static function keyForOpportunity(string $symbol, string $buyExchange, string $sellExchange): string
     {
         return sprintf('%s|%s->%s', $symbol, $buyExchange, $sellExchange);
+    }
+
+    public static function keyFor(string $symbol, string $buyExchange, string $sellExchange): string
+    {
+        return self::keyForOpportunity($symbol, $buyExchange, $sellExchange);
+    }
+
+    /**
+     * Clave estable para un ciclo triangular: secuencia completa de pasos.
+     */
+    public static function keyForCycle(string $cycleKey): string
+    {
+        return 'cycle|'.$cycleKey;
     }
 }

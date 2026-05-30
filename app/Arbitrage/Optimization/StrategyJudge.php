@@ -52,11 +52,14 @@ final class StrategyJudge
         }
 
         if (! $enabled || $apiKey === '') {
-            return $this->fromFallback($quantFallback, $minWindows, 'advisor deshabilitado; veredicto cuantitativo');
+            $verdict = $this->fromFallback($quantFallback, $minWindows, 'advisor deshabilitado; veredicto cuantitativo');
+
+            return $this->enforceBeatsChampion($verdict, $champion, $metrics);
         }
 
         try {
             $parsed = $this->callLlm($champion, $challengers, $metrics, $config);
+            $verdict = $this->fromLlm($parsed, $champion, $challengers, $minWindows);
         } catch (Throwable $e) {
             $this->logger->warning('[autopilot][judge] LLM falló, degradando a cuantitativo', [
                 'error' => $e->getMessage(),
@@ -66,10 +69,58 @@ final class StrategyJudge
                 return JudgeVerdict::noChange('quant_fallback', 'LLM falló y fallback deshabilitado.');
             }
 
-            return $this->fromFallback($quantFallback, $minWindows, 'fallback por error LLM: '.$e->getMessage());
+            $verdict = $this->fromFallback($quantFallback, $minWindows, 'fallback por error LLM: '.$e->getMessage());
         }
 
-        return $this->fromLlm($parsed, $champion, $challengers, $minWindows);
+        return $this->enforceBeatsChampion($verdict, $champion, $metrics);
+    }
+
+    /**
+     * Guarda dura e independiente de la fuente (LLM o cuantitativa): el nuevo
+     * champion SIEMPRE debe haber sido un challenger que superó al proceso actual
+     * (el champion vigente) en P&L realizado sobre el MISMO periodo y bajo el
+     * mismo feed compartido. Si el candidato no supera al champion, se veta la
+     * promoción y el incumbente se mantiene. Esto blinda contra errores de juicio
+     * del LLM y promociones por ruido.
+     *
+     * @param  array<int, StrategyPerformance>  $metrics  por strategy_id (incluye champion)
+     */
+    private function enforceBeatsChampion(JudgeVerdict $verdict, ArbitrageStrategy $champion, array $metrics): JudgeVerdict
+    {
+        if ($verdict->promoteStrategyId === null) {
+            return $verdict;
+        }
+
+        $championPnl = ($metrics[(int) $champion->id] ?? null)?->pnlSum ?? 0.0;
+        $candidatePerf = $metrics[$verdict->promoteStrategyId] ?? null;
+        $candidatePnl = $candidatePerf?->pnlSum;
+
+        // Estrictamente mejor: empatar no desplaza al incumbente (sesgo de
+        // incumbencia a favor de la estabilidad).
+        if ($candidatePnl !== null && $candidatePnl > $championPnl) {
+            return $verdict;
+        }
+
+        $this->logger->info('[autopilot][judge] promoción vetada: el challenger no supera al champion', [
+            'candidate_id' => $verdict->promoteStrategyId,
+            'candidate_pnl' => $candidatePnl,
+            'champion_id' => (int) $champion->id,
+            'champion_pnl' => $championPnl,
+        ]);
+
+        return new JudgeVerdict(
+            promoteStrategyId: null,
+            bestPerformanceId: $verdict->bestPerformanceId,
+            bestGrowthId: $verdict->bestGrowthId,
+            rationale: trim($verdict->rationale.sprintf(
+                ' [veto: el challenger #%d no superó el P&L del champion en el periodo (%.4f <= %.4f); se mantiene el champion actual]',
+                $verdict->promoteStrategyId,
+                (float) ($candidatePnl ?? 0.0),
+                (float) $championPnl,
+            )),
+            source: $verdict->source,
+            ranking: $verdict->ranking,
+        );
     }
 
     /**

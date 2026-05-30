@@ -35,6 +35,20 @@ const DISCARD_LABEL = {
     'risk:insufficient_volume': 'Volumen insuficiente',
     'risk:insufficient_balance': 'Balance insuficiente',
     'risk:circuit_breaker_open': 'Circuit breaker abierto',
+    // Descartes específicos del módulo triangular (ciclos multi-pata).
+    'cycle:no_start_assets': 'Ciclo: sin activos de partida',
+    'cycle:no_anchor': 'Ciclo: book sin aristas',
+    'cycle:no_anchor_in_cycle': 'Ciclo: sin ancla en ruta',
+    'cycle:not_profitable': 'Ciclo: producto < 1',
+    'cycle:not_executable': 'Ciclo: sin volumen ejecutable',
+    'cycle:risk:low_net_profit': 'Ciclo: profit neto bajo',
+    'cycle:risk:low_net_margin': 'Ciclo: margen neto bajo',
+    'cycle:risk:book_stale': 'Ciclo: book stale',
+    'cycle:risk:high_latency': 'Ciclo: latencia alta',
+    'cycle:risk:insufficient_volume': 'Ciclo: volumen insuficiente',
+    'cycle:risk:insufficient_balance': 'Ciclo: balance insuficiente',
+    'cycle:risk:circuit_breaker_open': 'Ciclo: circuit breaker abierto',
+    'cycle:risk:execution_failed': 'Ciclo: ejecución falló',
 };
 
 export function discardLabel(key) {
@@ -81,6 +95,16 @@ export function stageLabel(p) {
 export function timeFromMs(ms) {
     const d = ms ? new Date(ms) : new Date();
     return d.toTimeString().slice(0, 8);
+}
+
+/* Latencia de evaluación (aparición del order book → decisión). El backend la
+   entrega en microsegundos; mostramos µs por debajo de 1 ms y ms con decimales
+   por encima. */
+export function fmtLatency(us) {
+    if (us == null || us === '' || Number.isNaN(Number(us))) return '—';
+    const v = Number(us);
+    if (v < 1000) return Math.round(v) + ' µs';
+    return (v / 1000).toFixed(v < 10000 ? 2 : 1) + ' ms';
 }
 
 function pad(n) {
@@ -149,6 +173,7 @@ export function normalizeOpportunity(input) {
         ?? (realizedPnl != null ? realizedPnl - net : null);
 
     const detectedMs = Number(op.detected_at_ms) || (input.published_at ? Date.parse(input.published_at) : null) || (input.created_at ? Date.parse(input.created_at) : Date.now());
+    const evaluationLatencyUs = num(op.evaluation_latency_us);
 
     const reasonText = reasons.length ? reasons.join(' · ') : (
         decision === 'execute' ? 'Profit neto sobre umbral'
@@ -183,6 +208,7 @@ export function normalizeOpportunity(input) {
         decision: reasonText,
         rule: 'RISK MANAGER · ' + decision.toUpperCase() + (reasons.length ? ' · ' + reasons[0] : ''),
         partial: !!op.partial_fill,
+        evaluationLatencyUs,
         fin: {
             grossCost: buyNotional,
             sellGross,
@@ -269,7 +295,7 @@ const TF_WINDOW_MS = { h24: 3600e3, day: 86400e3, week: 604800e3 };
 // Serie de P&L acumulado con marcas de tiempo por punto, para alimentar la
 // gráfica grande con ejes (X temporal) y tooltips. `step` es el P&L aportado
 // por la operación que generó ese punto (útil para el indicador puntual).
-export function deriveChartSeries(trades, tf) {
+export function deriveChartSeries(trades, tf, markers = []) {
     const windowMs = TF_WINDOW_MS[tf] || TF_WINDOW_MS.week;
     const now = Date.now();
     const sorted = [...(trades || [])]
@@ -284,30 +310,104 @@ export function deriveChartSeries(trades, tf) {
         else inWindow.push(row);
     }
 
-    const windowStart = now - windowMs;
-    const values = [base];
-    const times = [windowStart];
+    // Sin operaciones en la ventana: línea base plana a lo largo de la ventana.
+    if (inWindow.length === 0) {
+        const windowStart = now - windowMs;
+        return { values: [base, base], times: [windowStart, now], steps: [0, 0], windowMs, domain: [windowStart, now] };
+    }
+
+    // El dominio del eje X se ajusta al rango temporal REAL de los datos, no a
+    // la ventana completa. Un pequeño "lead-in" hace que la curva arranque desde
+    // la línea base sin un salto vertical en el origen.
+    const firstTs = inWindow[0].ts;
+    const lastTs = inWindow[inWindow.length - 1].ts;
+    const span = Math.max(1, lastTs - firstTs);
+    const lead = Math.max(1000, Math.round(span * 0.02));
+
+    // El borde izquierdo se extiende para incluir los lanzamientos de champion
+    // recientes (el actual y el anterior). El feed solo trae los últimos ~200
+    // trades; con volumen alto esa ventana abarca pocos minutos y se desliza,
+    // dejando fuera el momento del lanzamiento. Sin esto, la línea punteada se
+    // "pegaba" al borde en vez de caer en su posición real. Acotamos a la
+    // ventana del timeframe y a 45 min para no comprimir la curva con promos
+    // muy viejas.
+    let domainStart = firstTs - lead;
+    const maxBack = Math.min(windowMs, 45 * 60_000);
+    const marks = (markers || [])
+        .map((m) => (m && typeof m.ms === 'number' ? m.ms : null))
+        .filter((ms) => ms !== null && ms <= lastTs && ms >= firstTs - maxBack)
+        .sort((a, b) => b - a);
+    if (marks.length) {
+        // Incluir el lanzamiento del champion actual y el anterior (hasta 2).
+        const oldest = marks[Math.min(marks.length - 1, 1)];
+        if (oldest - lead < domainStart) domainStart = oldest - lead;
+    }
+
+    // Curva de equity remuestreada a intervalos de tiempo regulares: cada punto
+    // es el P&L acumulado real hasta ese instante. Así los puntos quedan
+    // equiespaciados en el tiempo (no agrupados por ráfagas de trades) y el
+    // ruido sub-intervalo por-operación se promedia, dando una línea limpia.
+    const SAMPLES = Math.min(90, inWindow.length);
+    const values = [Number(base.toFixed(2))];
+    const times = [domainStart];
     const steps = [0];
+    let ptr = 0;
     let acc = base;
-    for (const row of inWindow) {
-        acc += row.pnl;
+    let prevAcc = base;
+    for (let k = 0; k < SAMPLES; k++) {
+        const tSample = firstTs + (k / (SAMPLES - 1 || 1)) * span;
+        while (ptr < inWindow.length && inWindow[ptr].ts <= tSample) {
+            acc += inWindow[ptr].pnl;
+            ptr++;
+        }
         values.push(Number(acc.toFixed(2)));
-        times.push(row.ts);
-        steps.push(Number(row.pnl.toFixed(2)));
+        times.push(Math.round(tSample));
+        steps.push(Number((acc - prevAcc).toFixed(2)));
+        prevAcc = acc;
     }
-    // Ancla el borde derecho al presente: el P&L se mantiene plano desde la
-    // última operación hasta "ahora". Así el eje X cubre exactamente la ventana
-    // seleccionada [windowStart, now] y los tiempos son proporcionales.
-    if (times[times.length - 1] < now) {
-        values.push(values[values.length - 1]);
-        times.push(now);
-        steps.push(0);
-    }
-    return { values, times, steps, windowMs, domain: [windowStart, now] };
+    return { values, times, steps, windowMs, domain: [times[0], times[times.length - 1]] };
 }
 
 export function deriveChart(trades, tf) {
     return deriveChartSeries(trades, tf).values;
+}
+
+// Mapea la curva de equity ESTABLE del servidor ({axis, values}) al formato que
+// consume BigChart. A diferencia de deriveChartSeries (que reconstruye desde el
+// feed acotado de trades y se re-basea al deslizarse la ventana de 200), aquí
+// los puntos históricos son fijos. Solo extendemos la línea base hacia la
+// izquierda para que los marcadores de promoción recientes sigan visibles.
+export function equityToChartSeries(equity, markers = []) {
+    const axis = (equity && equity.axis) || [];
+    const values = (equity && equity.values) || [];
+
+    if (axis.length < 2 || values.length < 2) {
+        const now = Date.now();
+        const base = values[0] ?? 0;
+        return { values: [base, base], times: [now - 3600e3, now], steps: [0, 0], domain: [now - 3600e3, now] };
+    }
+
+    const base = values[0];
+    const firstTs = axis[0];
+    const lastTs = axis[axis.length - 1];
+    const span = Math.max(1, lastTs - firstTs);
+    const lead = Math.max(1000, Math.round(span * 0.02));
+
+    let domainStart = firstTs - lead;
+    const maxBack = 45 * 60_000;
+    const marks = (markers || [])
+        .map((m) => (m && typeof m.ms === 'number' ? m.ms : null))
+        .filter((ms) => ms !== null && ms <= lastTs && ms >= firstTs - maxBack)
+        .sort((a, b) => b - a);
+    if (marks.length) {
+        const oldest = marks[Math.min(marks.length - 1, 1)];
+        if (oldest - lead < domainStart) domainStart = oldest - lead;
+    }
+
+    const times = [domainStart, ...axis];
+    const vals = [base, ...values];
+    const steps = vals.map((v, i) => (i === 0 ? 0 : Number((v - vals[i - 1]).toFixed(2))));
+    return { values: vals, times, steps, domain: [domainStart, lastTs] };
 }
 
 export function windowTotal(trades, tf) {

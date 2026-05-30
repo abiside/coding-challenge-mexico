@@ -67,6 +67,7 @@ final class BufferedOpportunityRecorder implements OpportunityRecorderInterface
             'decision' => $decision->decision->value,
             'reasons' => $decision->reasons,
             'detected_at_ms' => $data['detected_at_ms'],
+            'evaluation_latency_us' => $data['evaluation_latency_us'],
         ];
 
         $tradeRow = null;

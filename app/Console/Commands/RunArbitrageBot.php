@@ -196,7 +196,9 @@ class RunArbitrageBot extends Command
 
             /** @var ArbitrageStrategy $strategy */
             $strategy = $expected[$key]['strategy'];
-            if ($this->contexts[$key]['runtime']->configHash !== $strategy->config_hash) {
+            /** @var ArbitrageSetting $setting */
+            $setting = $expected[$key]['setting'];
+            if ($this->contexts[$key]['runtime']->configHash !== $this->effectiveConfigHash($strategy, $setting)) {
                 $shouldRebuild = true;
             }
 
@@ -302,6 +304,14 @@ class RunArbitrageBot extends Command
     {
         $variantConfig = (array) $strategy->config;
         $variantConfig['initial_balances'] = $this->resolveInitialBalances($variantConfig, $userId, $strategy);
+        // El modo simulación es un control EN VIVO a nivel de usuario, no un
+        // parámetro evolucionado de la estrategia. Inyectamos el bloque actual
+        // del setting en TODAS las estrategias (champion + challengers) para que
+        // (a) compartan exactamente la misma perturbación y (b) el toggle surta
+        // efecto aunque el autopilot esté encendido (su config snapshotteada no
+        // refleja cambios de settings). El hash efectivo incluye este estado
+        // para que encender/ajustar el simulador dispare el hot-reload.
+        $variantConfig['simulation'] = $this->liveSimulation($setting);
 
         $runtime = $factory->make(
             config: $variantConfig,
@@ -310,7 +320,7 @@ class RunArbitrageBot extends Command
             userId: $userId,
             strategyId: (int) $strategy->id,
             persistWallet: $strategy->isChampion(),
-            configHash: $strategy->config_hash,
+            configHash: $this->effectiveConfigHash($strategy, $setting),
         );
 
         return [
@@ -318,6 +328,32 @@ class RunArbitrageBot extends Command
             'symbols' => array_values(array_filter((array) ($variantConfig['symbols'] ?? []))),
             'strategy_id' => (int) $strategy->id,
         ];
+    }
+
+    /**
+     * Bloque de simulación EN VIVO del usuario. Control a nivel de cuenta (no
+     * evolucionado por el autopilot): se aplica por igual a todas sus
+     * estrategias para que la perturbación sintética sea compartida.
+     *
+     * @return array{enabled: bool, max_drift_pct: float, max_exec_drift_pct: float}
+     */
+    private function liveSimulation(ArbitrageSetting $setting): array
+    {
+        return [
+            'enabled' => (bool) $setting->simulation_enabled,
+            'max_drift_pct' => (float) $setting->simulation_max_drift_pct,
+            'max_exec_drift_pct' => (float) $setting->simulation_max_exec_drift_pct,
+        ];
+    }
+
+    /**
+     * Hash efectivo para reconciliación: combina el hash de la config
+     * evolucionada de la estrategia con el estado del simulador en vivo, de modo
+     * que encender/apagar o ajustar la deriva dispare un hot-reload del engine.
+     */
+    private function effectiveConfigHash(ArbitrageStrategy $strategy, ArbitrageSetting $setting): string
+    {
+        return (string) $strategy->config_hash.'|sim:'.md5((string) json_encode($this->liveSimulation($setting)));
     }
 
     /**
@@ -399,6 +435,27 @@ class RunArbitrageBot extends Command
                     );
                     if ($runtime->persistWallet) {
                         $this->persistWalletSnapshot($runtime);
+                    }
+                }
+            }
+
+            // Ciclos triangulares (opcional). Comparten store y wallets con el
+            // engine de 2 patas, así que ven los mismos books frescos.
+            if ($runtime->cycleEngine !== null) {
+                $processedCycles = $runtime->cycleEngine->onSnapshot($effectiveSnapshot);
+                foreach ($processedCycles as $outcome) {
+                    $runtime->metrics->recordCandidate();
+                    $runtime->metrics->recordDecision($outcome->decision->decision);
+
+                    if ($outcome->simulation !== null && ! $outcome->simulation->duplicate) {
+                        $runtime->metrics->recordExecution(
+                            $outcome->simulation->realizedPnl,
+                            (float) $outcome->simulation->startAmount,
+                            (float) $outcome->cycle->profitability->netMargin(),
+                        );
+                        if ($runtime->persistWallet) {
+                            $this->persistWalletSnapshot($runtime);
+                        }
                     }
                 }
             }

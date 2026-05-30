@@ -4,17 +4,42 @@ declare(strict_types=1);
 
 namespace App\Arbitrage\Engine\DTO;
 
+use App\Arbitrage\Contracts\ProfitableTrade;
+use App\Arbitrage\Execution\SymbolAssets;
+use App\Arbitrage\Risk\CircuitBreaker;
+
 /**
  * Oportunidad totalmente evaluada: candidato + liquidez + rentabilidad.
  * Es la entrada del RiskManager, que decidirá ejecutar/rechazar/ignorar.
+ *
+ * Implementa `ProfitableTrade` para que los guards/risk manager trabajen
+ * indistintamente con oportunidades de 2 patas y ciclos triangulares.
  */
-final class EvaluatedOpportunity
+final class EvaluatedOpportunity implements ProfitableTrade
 {
+    /**
+     * Latencia de evaluación en microsegundos: tiempo transcurrido desde que el
+     * order book disparador llegó al engine hasta que se tomó la decisión sobre
+     * esta oportunidad. Se rellena en `finalize()`, después de evaluar; null
+     * mientras la oportunidad no haya sido decidida.
+     */
+    private ?int $evaluationLatencyUs = null;
+
     public function __construct(
         public readonly OpportunityCandidate $candidate,
         public readonly LiquidityResult $liquidity,
         public readonly ProfitabilityResult $profitability,
     ) {
+    }
+
+    public function setEvaluationLatencyUs(int $microseconds): void
+    {
+        $this->evaluationLatencyUs = max(0, $microseconds);
+    }
+
+    public function evaluationLatencyUs(): ?int
+    {
+        return $this->evaluationLatencyUs;
     }
 
     public function symbol(): string
@@ -30,6 +55,52 @@ final class EvaluatedOpportunity
     public function sellExchange(): string
     {
         return $this->candidate->sellExchange();
+    }
+
+    public function label(): string
+    {
+        return $this->symbol();
+    }
+
+    public function baseAsset(): string
+    {
+        try {
+            return SymbolAssets::fromSymbol($this->symbol())->base;
+        } catch (\InvalidArgumentException) {
+            return $this->symbol();
+        }
+    }
+
+    public function netProfit(): float
+    {
+        return $this->profitability->netProfit;
+    }
+
+    public function netMargin(): float
+    {
+        return $this->profitability->netMargin();
+    }
+
+    public function executableVolume(): float
+    {
+        return $this->liquidity->executableBaseVolume;
+    }
+
+    public function bookAgesMs(?int $nowMs = null): array
+    {
+        return [
+            $this->candidate->buyBook->ageMs($nowMs),
+            $this->candidate->sellBook->ageMs($nowMs),
+        ];
+    }
+
+    public function circuitBreakerKey(): string
+    {
+        return CircuitBreaker::keyForOpportunity(
+            $this->symbol(),
+            $this->buyExchange(),
+            $this->sellExchange(),
+        );
     }
 
     /**
@@ -92,6 +163,7 @@ final class EvaluatedOpportunity
             'latency_penalty' => round($this->profitability->latencyPenalty, 8),
             'fixed_cost' => round($this->profitability->fixedCost, 8),
             'detected_at_ms' => $this->candidate->detectedAtMs,
+            'evaluation_latency_us' => $this->evaluationLatencyUs,
         ];
     }
 }

@@ -36,6 +36,7 @@ class Opportunity extends Model
         'decision',
         'reasons',
         'detected_at_ms',
+        'evaluation_latency_us',
     ];
 
     protected function casts(): array
@@ -61,6 +62,7 @@ class Opportunity extends Model
             'partial_fill' => 'bool',
             'reasons' => 'array',
             'detected_at_ms' => 'int',
+            'evaluation_latency_us' => 'int',
         ];
     }
 

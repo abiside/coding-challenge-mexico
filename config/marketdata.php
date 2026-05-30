@@ -30,29 +30,31 @@ return [
     */
 
     'symbols' => [
+        // El par cruzado `ETH/BTC` habilita ciclos triangulares intra-exchange
+        // (USDT->BTC->ETH->USDT) sin requerir transferencias entre wallets.
         'default' => array_values(array_filter(array_map(
             'trim',
-            explode(',', (string) env('MARKET_FEED_SYMBOLS', 'BTC/USDT,ETH/USDT'))
+            explode(',', (string) env('MARKET_FEED_SYMBOLS', 'BTC/USDT,ETH/USDT,ETH/BTC'))
         ))),
         'kraken' => array_values(array_filter(array_map(
             'trim',
-            explode(',', (string) env('MARKET_FEED_SYMBOLS_KRAKEN', 'BTC/USD,ETH/USD'))
+            explode(',', (string) env('MARKET_FEED_SYMBOLS_KRAKEN', 'BTC/USD,ETH/USD,ETH/BTC'))
         ))),
         'coinbase' => array_values(array_filter(array_map(
             'trim',
-            explode(',', (string) env('MARKET_FEED_SYMBOLS_COINBASE', 'BTC/USD,ETH/USD'))
+            explode(',', (string) env('MARKET_FEED_SYMBOLS_COINBASE', 'BTC/USD,ETH/USD,ETH/BTC'))
         ))),
         'bybit' => array_values(array_filter(array_map(
             'trim',
-            explode(',', (string) env('MARKET_FEED_SYMBOLS_BYBIT', 'BTC/USDT,ETH/USDT'))
+            explode(',', (string) env('MARKET_FEED_SYMBOLS_BYBIT', 'BTC/USDT,ETH/USDT,ETH/BTC'))
         ))),
         'okx' => array_values(array_filter(array_map(
             'trim',
-            explode(',', (string) env('MARKET_FEED_SYMBOLS_OKX', 'BTC/USDT,ETH/USDT'))
+            explode(',', (string) env('MARKET_FEED_SYMBOLS_OKX', 'BTC/USDT,ETH/USDT,ETH/BTC'))
         ))),
         'bitget' => array_values(array_filter(array_map(
             'trim',
-            explode(',', (string) env('MARKET_FEED_SYMBOLS_BITGET', 'BTC/USDT,ETH/USDT'))
+            explode(',', (string) env('MARKET_FEED_SYMBOLS_BITGET', 'BTC/USDT,ETH/USDT,ETH/BTC'))
         ))),
     ],
 

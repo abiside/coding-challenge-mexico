@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\Arbitrage\ArbitrageSnapshotController;
 use App\Http\Controllers\Api\V1\Arbitrage\EngineController;
 use App\Http\Controllers\Api\V1\Arbitrage\MarketController;
+use App\Http\Controllers\Api\V1\Arbitrage\OnboardingController;
 use App\Http\Controllers\Api\V1\Arbitrage\OpportunityController;
 use App\Http\Controllers\Api\V1\Arbitrage\SettingsController;
 use App\Http\Controllers\Api\V1\Arbitrage\SimulationController;
@@ -35,6 +36,8 @@ Route::prefix('v1')->group(function (): void {
         Route::post('/messages', MessageController::class);
 
         Route::prefix('arbitrage')->group(function (): void {
+            Route::post('/onboarding/demo', [OnboardingController::class, 'demo']);
+
             Route::get('/settings', [SettingsController::class, 'show']);
             Route::put('/settings', [SettingsController::class, 'update']);
 
@@ -58,6 +61,7 @@ Route::prefix('v1')->group(function (): void {
 
             Route::get('/', [ArbitrageSnapshotController::class, 'index']);
             Route::get('/opportunities', OpportunityController::class);
+            Route::get('/trades/equity', [TradeController::class, 'equity']);
             Route::get('/trades', TradeController::class);
             Route::get('/{symbol}', [ArbitrageSnapshotController::class, 'show']);
         });

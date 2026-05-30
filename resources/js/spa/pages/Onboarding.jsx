@@ -12,6 +12,7 @@ export default function Onboarding({ onDone, onLogout }) {
     const [walletForm, setWalletForm] = useState({ exchange: '', asset: 'USDT', available: '' });
     const [error, setError] = useState(null);
     const [saving, setSaving] = useState(false);
+    const [demoLoading, setDemoLoading] = useState(false);
 
     const load = async () => {
         const [settingsRes, walletsRes] = await Promise.all([api('/arbitrage/settings'), api('/arbitrage/wallets')]);
@@ -46,6 +47,15 @@ export default function Onboarding({ onDone, onLogout }) {
     const removeWallet = async (id) => {
         await api(`/arbitrage/wallets/${id}`, { method: 'DELETE' });
         setWallets((await api('/arbitrage/wallets')).data);
+    };
+
+    const startDemo = async () => {
+        setError(null);
+        setDemoLoading(true);
+        try {
+            await api('/arbitrage/onboarding/demo', { method: 'POST' });
+            onDone();
+        } catch (err) { setError(err.message); setDemoLoading(false); }
     };
 
     const finish = async () => {
@@ -86,6 +96,19 @@ export default function Onboarding({ onDone, onLogout }) {
 
             <div className="content">
                 {error && <div className="form-error">{error}</div>}
+
+                <div className="panel panel-pad" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <div className="brand-mark" style={{ flex: 'none' }}><I.bolt style={{ width: 16, height: 16, color: '#0a0710' }} /></div>
+                        <div>
+                            <div style={{ fontWeight: 600, color: 'var(--tx-hi)' }}>¿Solo quieres ver el motor en acción?</div>
+                            <div className="cfg-desc">Empieza con una demo lista: estrategia, wallets con saldos en USDT, USD, BTC y ETH (arbitraje de 2 patas y triangular) y simulación activa.</div>
+                        </div>
+                    </div>
+                    <button className="btn primary" onClick={startDemo} disabled={demoLoading}>
+                        <I.bolt style={{ width: 14, height: 14 }} />{demoLoading ? 'Preparando…' : 'Empezar con demo'}
+                    </button>
+                </div>
 
                 <div className="col-2b">
                     <div className="panel panel-pad">

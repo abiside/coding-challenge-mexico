@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
+use App\Arbitrage\Optimization\ChampionPromotion;
 use App\Arbitrage\Optimization\JudgeVerdict;
 use App\Arbitrage\Optimization\OptimizationPlan;
 use App\Arbitrage\Optimization\ProposedStrategy;
@@ -50,6 +51,7 @@ class OptimizeStrategies extends Command
         StrategyOptimizer $optimizer,
         StrategyAdvisor $advisor,
         StrategyJudge $judge,
+        ChampionPromotion $promotion,
         LoggerInterface $logger,
     ): int {
         $userIds = $this->resolveUserIds();
@@ -114,7 +116,7 @@ class OptimizeStrategies extends Command
             if ($verdict->promoteStrategyId !== null && $canPromote) {
                 $promoted = $challengers->firstWhere('id', $verdict->promoteStrategyId);
                 if ($promoted instanceof ArbitrageStrategy) {
-                    $this->applyPromotion($userId, $setting, $promoted, $verdict, $baseConfig, $optimizer, $logger);
+                    $this->applyPromotion($userId, $setting, $promoted, $verdict, $baseConfig, $promotion, $logger);
                     $applied = true;
                 }
             } elseif (! $plan->isEmpty()) {
@@ -245,10 +247,9 @@ class OptimizeStrategies extends Command
     }
 
     /**
-     * Promueve al challenger ganador y REINICIA la cohorte: archiva todos los
-     * challengers (incluido el promovido, cuyo config pasa a vivir en el
-     * champion vía setting) y genera una generación nueva alrededor del nuevo
-     * champion para repetir el análisis.
+     * Promueve al challenger ganador delegando en ChampionPromotion: el nuevo
+     * champion ocupa el lugar del anterior (que se archiva), arranca en CERO con
+     * la config del ganador, y la cohorte de challengers se regenera fresca.
      *
      * @param  array<string, mixed>  $baseConfig
      */
@@ -258,61 +259,38 @@ class OptimizeStrategies extends Command
         ArbitrageStrategy $promoted,
         JudgeVerdict $verdict,
         array $baseConfig,
-        StrategyOptimizer $optimizer,
+        ChampionPromotion $promotion,
         LoggerInterface $logger,
     ): void {
-        $created = [];
+        $champion = $promotion->promote(
+            $userId,
+            $setting,
+            $promoted,
+            $baseConfig,
+            $verdict->source,
+            manual: false,
+            rationale: $verdict->rationale !== '' ? $verdict->rationale : null,
+        );
 
-        DB::transaction(function () use (
-            $userId, $setting, $promoted, $verdict, $baseConfig, $optimizer, &$created
-        ): void {
-            // 1) Promueve: copia config del ganador al setting (hot-reload champion).
-            $this->promoteConfig($userId, $setting, $promoted, $verdict);
+        $challengers = ArbitrageStrategy::where('user_id', $userId)
+            ->where('status', ArbitrageStrategy::STATUS_CHALLENGER)
+            ->count();
 
-            // 2) Reinicia la cohorte: archiva TODOS los challengers vivos.
-            ArbitrageStrategy::where('user_id', $userId)
-                ->where('status', ArbitrageStrategy::STATUS_CHALLENGER)
-                ->update([
-                    'status' => ArbitrageStrategy::STATUS_ARCHIVED,
-                    'archived_at' => now(),
-                ]);
-
-            // 3) Regenera challengers frescos alrededor del nuevo champion.
-            $newChampionHash = ArbitrageStrategy::hashConfig($setting->toEngineConfig($baseConfig));
-            $fresh = $optimizer->freshProposals(
-                $userId,
-                $promoted,
-                (int) $setting->autopilot_max_challengers,
-                [$newChampionHash, (string) $promoted->config_hash],
-            );
-
-            foreach ($fresh as $proposal) {
-                ArbitrageStrategy::create([
-                    'user_id' => $userId,
-                    'name' => $proposal->name,
-                    'status' => ArbitrageStrategy::STATUS_CHALLENGER,
-                    'origin' => ArbitrageStrategy::ORIGIN_AGENT,
-                    'parent_id' => $proposal->parentId,
-                    'generation' => $proposal->generation,
-                    'config' => $proposal->config,
-                    'config_hash' => $proposal->configHash,
-                    'rationale' => $proposal->rationale,
-                ]);
-                $created[] = $proposal;
-            }
-        });
-
-        $this->info(sprintf('★ promoción aplicada: challenger #%d → champion (%s)', (int) $promoted->id, $verdict->source));
-        $this->info(sprintf('↻ cohorte reiniciada: %d challengers nuevos alrededor del nuevo champion', count($created)));
-        foreach ($created as $proposal) {
-            $this->line(sprintf('  + %s (hash=%s)', $proposal->name, substr($proposal->configHash, 0, 8)));
-        }
+        $this->info(sprintf(
+            '★ promoción aplicada: challenger #%d → champion #%d gen%d (%s)',
+            (int) $promoted->id,
+            (int) $champion->id,
+            (int) $champion->generation,
+            $verdict->source,
+        ));
+        $this->info(sprintf('↻ cohorte reiniciada en cero: %d challengers nuevos', $challengers));
 
         $logger->info('[autopilot] promoción + reinicio', [
             'user_id' => $userId,
             'promoted_id' => (int) $promoted->id,
+            'champion_id' => (int) $champion->id,
             'source' => $verdict->source,
-            'fresh_challengers' => count($created),
+            'fresh_challengers' => $challengers,
         ]);
     }
 
@@ -373,44 +351,6 @@ class OptimizeStrategies extends Command
         foreach ($plan->retirements as $id) {
             $this->info('- challenger archivado: '.$id);
         }
-    }
-
-    /**
-     * Copia los thresholds del challenger ganador al ArbitrageSetting (esto
-     * dispara el hot-reload del champion en RunArbitrageBot).
-     */
-    private function promoteConfig(
-        int $userId,
-        ArbitrageSetting $setting,
-        ArbitrageStrategy $challenger,
-        JudgeVerdict $verdict,
-    ): void {
-        $config = (array) $challenger->config;
-        $thresholds = (array) ($config['thresholds'] ?? []);
-
-        $setting->fill([
-            'symbols' => (array) ($config['symbols'] ?? $setting->symbols),
-            'min_net_profit' => (float) ($thresholds['min_net_profit'] ?? $setting->min_net_profit),
-            'min_net_margin' => (float) ($thresholds['min_net_margin'] ?? $setting->min_net_margin),
-            'min_base_volume' => (float) ($thresholds['min_base_volume'] ?? $setting->min_base_volume),
-            'max_base_volume' => (float) ($thresholds['max_base_volume'] ?? $setting->max_base_volume),
-            'freshness_ms' => (int) ($config['freshness_ms'] ?? $setting->freshness_ms),
-            'latency_max_ms' => (int) ($config['latency']['max_ms'] ?? $setting->latency_max_ms),
-        ]);
-        $setting->save();
-
-        BotEvent::create([
-            'user_id' => $userId,
-            'strategy_id' => $challenger->id,
-            'type' => 'autopilot.promotion',
-            'level' => 'info',
-            'payload' => [
-                'challenger_id' => (int) $challenger->id,
-                'source' => $verdict->source,
-                'rationale' => $verdict->rationale,
-            ],
-            'created_at' => now(),
-        ]);
     }
 
     /**

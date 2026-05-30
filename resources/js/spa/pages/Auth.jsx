@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { api, setToken } from '../client';
 import { I } from '../nifty/icons';
+import AuthBackground from './AuthBackground';
 
 export default function Auth({ onAuthenticated }) {
     const [mode, setMode] = useState('login');
@@ -30,6 +31,7 @@ export default function Auth({ onAuthenticated }) {
 
     return (
         <div className="auth-wrap">
+            <AuthBackground />
             <div className="panel panel-pad auth-card hud">
                 <div className="brand">
                     <div className="brand-mark"><I.bolt style={{ width: 16, height: 16, color: '#0a0710' }} /></div>

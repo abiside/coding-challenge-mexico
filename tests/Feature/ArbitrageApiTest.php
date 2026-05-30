@@ -107,6 +107,33 @@ class ArbitrageApiTest extends TestCase
             ->assertJsonPath('data.asset', 'USDT');
     }
 
+    public function test_trades_equity_returns_stable_cumulative_series_with_base_offset(): void
+    {
+        $user = $this->actingUser();
+        $nowMs = (int) (microtime(true) * 1000);
+        $weekMs = 604_800_000;
+
+        // Trade anterior a la ventana semanal => entra como offset (base), no se
+        // grafica pero preserva el nivel acumulado.
+        Trade::create($this->tradeRowAt((int) $user->id, 100.0, 'old', $nowMs - $weekMs - 60_000));
+        // Trades dentro de la ventana => acumulado 100->110->106->112.
+        Trade::create($this->tradeRowAt((int) $user->id, 10.0, 'w1', $nowMs - 30_000));
+        Trade::create($this->tradeRowAt((int) $user->id, -4.0, 'w2', $nowMs - 20_000));
+        Trade::create($this->tradeRowAt((int) $user->id, 6.0, 'w3', $nowMs - 10_000));
+
+        $response = $this->getJson('/api/v1/arbitrage/trades/equity?tf=week')->assertOk();
+
+        $this->assertEqualsWithDelta(112.0, (float) $response->json('total'), 0.0001);
+        $this->assertEqualsWithDelta(12.0, (float) $response->json('window_total'), 0.0001);
+
+        $values = $response->json('values');
+        $this->assertEqualsWithDelta(100.0, (float) $values[0], 0.0001, 'el primer punto es la base (offset previo)');
+        $this->assertEqualsWithDelta(112.0, (float) end($values), 0.0001, 'el ultimo punto es el acumulado total');
+
+        $axis = $response->json('axis');
+        $this->assertSame($axis, array_values(collect($axis)->sort()->all()), 'el eje esta ordenado ascendente');
+    }
+
     public function test_settings_can_be_updated(): void
     {
         $this->actingUser();
@@ -171,6 +198,14 @@ class ArbitrageApiTest extends TestCase
      */
     private function tradeRow(int $userId, float $pnl, string $key): array
     {
+        return $this->tradeRowAt($userId, $pnl, $key, 1_700_000_000_000);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function tradeRowAt(int $userId, float $pnl, string $key, int $executedAtMs): array
+    {
         return [
             'user_id' => $userId,
             'symbol' => 'BTC/USDT',
@@ -180,7 +215,7 @@ class ArbitrageApiTest extends TestCase
             'realized_pnl' => $pnl,
             'status' => 'simulated',
             'idempotency_key' => $key,
-            'executed_at_ms' => 1_700_000_000_000,
+            'executed_at_ms' => $executedAtMs,
         ];
     }
 }

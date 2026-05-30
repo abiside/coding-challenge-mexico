@@ -1,6 +1,6 @@
 /* NIFTY — drawer de detalle de oportunidad (portado del diseño, cableado a datos reales) */
 import { I } from './icons';
-import { fmt } from './format';
+import { fmt, fmtLatency } from './format';
 
 function Book({ side, levels, label }) {
     if (!levels || levels.length === 0) {
@@ -69,6 +69,9 @@ export function OppDrawer({ o, onClose }) {
                         <div className="kv"><span className="k">Precio venta prom.</span><span className="v">${fmt(o.sellPrice)}</span></div>
                         <div className="kv"><span className="k">Spread bruto</span><span className="v">+{o.grossPct.toFixed(2)}%</span></div>
                         <div className="kv"><span className="k">Profit neto final</span><span className={'v ' + profitClass}>{f.net >= 0 ? '+' : '−'}${fmt(Math.abs(f.net))}</span></div>
+                        {o.evaluationLatencyUs != null && (
+                            <div className="kv"><span className="k">Latencia de evaluación</span><span className="v">{fmtLatency(o.evaluationLatencyUs)}</span></div>
+                        )}
                     </div>
                 </div>
 

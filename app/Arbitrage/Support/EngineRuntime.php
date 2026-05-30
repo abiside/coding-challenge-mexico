@@ -9,6 +9,7 @@ use App\Arbitrage\Execution\WalletManager;
 use App\Arbitrage\MarketData\MarketPerturbator;
 use App\Arbitrage\Persistence\PersistenceBuffer;
 use App\Arbitrage\Realtime\MetricsAggregator;
+use App\Arbitrage\Triangular\Engine\CycleEngine;
 
 /**
  * Contenedor de los componentes vivos del engine, para que el runner
@@ -34,5 +35,8 @@ final class EngineRuntime
         public readonly ?string $configHash = null,
         // Perturbador de precios para el modo simulación. Null = books reales.
         public readonly ?MarketPerturbator $perturbator = null,
+        // Engine de ciclos triangulares (opcional). Si null, el runtime solo
+        // procesa oportunidades de 2 patas.
+        public readonly ?CycleEngine $cycleEngine = null,
     ) {}
 }

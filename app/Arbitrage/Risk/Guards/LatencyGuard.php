@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Arbitrage\Risk\Guards;
 
-use App\Arbitrage\Engine\DTO\EvaluatedOpportunity;
+use App\Arbitrage\Contracts\ProfitableTrade;
 use App\Arbitrage\Risk\RiskDecision;
 
 /**
@@ -17,7 +17,7 @@ final class LatencyGuard implements Guard
     {
     }
 
-    public function evaluate(EvaluatedOpportunity $opportunity, int $nowMs): ?RiskDecision
+    public function evaluate(ProfitableTrade $opportunity, int $nowMs): ?RiskDecision
     {
         $combined = $opportunity->combinedAgeMs($nowMs);
 

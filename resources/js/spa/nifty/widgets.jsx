@@ -1,6 +1,21 @@
 /* NIFTY — shared widgets: charts, controls, indicators (portado del diseño) */
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { stageLabel, signedMoney, fmtCompact } from './format';
+
+// Reescala un arreglo de valores a `len` puntos por interpolación lineal. Sirve
+// para morphear la curva aunque cambie la cantidad de puntos entre snapshots.
+function resampleTo(arr, len) {
+    if (!arr || arr.length === 0) return new Array(len).fill(0);
+    if (arr.length === len) return arr.slice();
+    const out = new Array(len);
+    const span = Math.max(1, arr.length - 1);
+    for (let i = 0; i < len; i++) {
+        const src = (i / Math.max(1, len - 1)) * span;
+        const lo = Math.floor(src), hi = Math.min(arr.length - 1, Math.ceil(src)), f = src - lo;
+        out[i] = arr[lo] + (arr[hi] - arr[lo]) * f;
+    }
+    return out;
+}
 
 /* ---------- Sparkline ---------- */
 export function Sparkline({ data, color = 'var(--turq)', h = 30 }) {
@@ -54,8 +69,10 @@ export function Kpi({ hero, label, icon, value, delta, deltaDir, detail, spark, 
 /* ---------- Big P&L chart (con escalas + indicador puntual) ---------- */
 function fmtAxisTime(ms, spanMs) {
     const d = new Date(ms);
+    const p = (x) => String(x).padStart(2, '0');
     if (spanMs >= 2 * 864e5) return d.toLocaleDateString('es-MX', { day: '2-digit', month: 'short' });
-    return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0');
+    if (spanMs < 20 * 60e3) return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+    return p(d.getHours()) + ':' + p(d.getMinutes());
 }
 
 function fmtTipTime(ms) {
@@ -65,14 +82,43 @@ function fmtTipTime(ms) {
 
 export function BigChart({ data, times, steps, markers = [], domain }) {
     const W = 760, H = 290, padL = 50, padR = 16, padT = 18, padB = 30;
-    const series = data && data.length > 1 ? data : [0, 0];
-    const min = Math.min(...series, 0), max = Math.max(...series);
+    const target = data && data.length > 1 ? data : [0, 0];
+    const n = target.length;
+    // Escala fija al snapshot objetivo: el eje queda estable mientras la línea
+    // morphea (evita que la grilla tiemble durante la animación).
+    const min = Math.min(...target, 0), max = Math.max(...target);
     const range = max - min || 1;
     const innerW = W - padL - padR, innerH = H - padT - padB;
-    const n = series.length;
 
     const wrapRef = useRef(null);
     const [hover, setHover] = useState(null);
+
+    // Morph suave entre snapshots: la curva se desliza a su nueva forma en vez
+    // de saltar de golpe cuando el REST trae nuevos trades. Solo se reanima al
+    // cambiar la firma de los valores, no en cada re-render del padre.
+    const [aVals, setAVals] = useState(target);
+    const fromRef = useRef(target);
+    const rafRef = useRef(0);
+    const sig = n + '|' + Number(target[n - 1] ?? 0).toFixed(2) + '|' + Number(target[0] ?? 0).toFixed(2);
+    useEffect(() => {
+        const goal = target;
+        const from = resampleTo(fromRef.current, goal.length);
+        const start = performance.now();
+        const DUR = 520;
+        cancelAnimationFrame(rafRef.current);
+        const stepFn = (now) => {
+            const t = Math.min(1, (now - start) / DUR);
+            const e = 1 - Math.pow(1 - t, 3); // easeOutCubic
+            setAVals(goal.map((v, i) => from[i] + (v - from[i]) * e));
+            if (t < 1) rafRef.current = requestAnimationFrame(stepFn);
+            else fromRef.current = goal;
+        };
+        rafRef.current = requestAnimationFrame(stepFn);
+        return () => cancelAnimationFrame(rafRef.current);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [sig]);
+
+    const series = aVals.length === n ? aVals : target;
 
     // Eje X como escala temporal lineal real: cada punto se ubica según su
     // timestamp dentro del dominio [t0, t1] (la ventana seleccionada), no por su
@@ -86,15 +132,16 @@ export function BigChart({ data, times, steps, markers = [], domain }) {
     const X = hasTimes ? ((i) => Xt(times[i])) : ((i) => padL + (i / (n - 1)) * innerW);
     const Y = (v) => padT + innerH - ((v - min) / range) * innerH;
 
-    const pts = series.map((v, i) => [X(i), Y(v)]);
-    let d = `M ${pts[0][0]} ${pts[0][1]}`;
-    for (let i = 0; i < pts.length - 1; i++) {
-        const p0 = pts[i - 1] || pts[i], p1 = pts[i], p2 = pts[i + 1], p3 = pts[i + 2] || p2;
-        const c1x = p1[0] + (p2[0] - p0[0]) / 6, c1y = p1[1] + (p2[1] - p0[1]) / 6;
-        const c2x = p2[0] - (p3[0] - p1[0]) / 6, c2y = p2[1] - (p3[1] - p1[1]) / 6;
-        d += ` C ${c1x.toFixed(1)} ${c1y.toFixed(1)}, ${c2x.toFixed(1)} ${c2y.toFixed(1)}, ${p2[0].toFixed(1)} ${p2[1].toFixed(1)}`;
+    const clamp = (val, lo, hi) => Math.min(Math.max(val, lo), hi);
+    const pts = series.map((v, i) => [X(i), Y(clamp(v, min, max))]);
+    // Curva de equity: segmentos rectos entre puntos (sin suavizado). El spline
+    // introducía sobreimpulsos que en una gráfica de trading parecen bultos
+    // extraños y desplazan visualmente los puntos en el tiempo.
+    let d = `M ${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`;
+    for (let i = 1; i < pts.length; i++) {
+        d += ` L ${pts[i][0].toFixed(1)} ${pts[i][1].toFixed(1)}`;
     }
-    const area = d + ` L ${pts[pts.length - 1][0]} ${H - padB} L ${pts[0][0]} ${H - padB} Z`;
+    const area = d + ` L ${pts[pts.length - 1][0].toFixed(1)} ${H - padB} L ${pts[0][0].toFixed(1)} ${H - padB} Z`;
     const last = pts[pts.length - 1];
     const gridFracs = [0, 0.25, 0.5, 0.75, 1];
 
@@ -112,14 +159,52 @@ export function BigChart({ data, times, steps, markers = [], domain }) {
         })
         : [];
 
-    const promoLines = hasTimes
-        ? (markers || [])
-            .filter((m) => m && typeof m.ms === 'number' && m.ms >= t0 && m.ms <= t1)
-            .map((m) => {
-                const x = Xt(m.ms);
-                return { svgX: x, leftPct: (x / W) * 100, label: fmtAxisTime(m.ms, spanMs), ms: m.ms, manual: !!m.manual };
-            })
-        : [];
+    // Marcadores de promoción (despliegue de nuevo champion). Los que caen
+    // dentro del rango visible se ubican en su tiempo real; si ninguno cae
+    // dentro, el champion vigente se desplegó antes: anclamos su línea al borde
+    // izquierdo para no perder la referencia de "qué champion está operando".
+    const valid = hasTimes ? (markers || []).filter((m) => m && typeof m.ms === 'number') : [];
+    const inRange = valid.filter((m) => m.ms >= t0 && m.ms <= t1);
+    let shown = inRange;
+    if (inRange.length === 0 && valid.length) {
+        const before = valid.filter((m) => m.ms < t0).sort((a, b) => b.ms - a.ms)[0];
+        if (before) shown = [{ ...before, pinned: true }];
+    }
+    // Con promociones frecuentes (periodo corto) evitamos saturar: dibujamos las
+    // líneas de los lanzamientos más recientes y solo etiquetamos los 2 últimos
+    // (champion actual y anterior) para que el texto no se encime.
+    shown = [...shown].sort((a, b) => b.ms - a.ms).slice(0, 8);
+    const promoLines = shown.map((m, idx) => {
+        const x = Xt(m.ms);
+        const gen = m.generation != null ? `gen${m.generation}` : 'champion';
+        return {
+            svgX: x, leftPct: (x / W) * 100,
+            label: m.pinned ? 'Champion activo' : (idx < 2 ? `${gen} · ${fmtAxisTime(m.ms, spanMs)}` : ''),
+            ms: m.ms, manual: !!m.manual, pinned: !!m.pinned,
+            generation: m.generation != null ? m.generation : null,
+            recent: idx === 0,
+        };
+    });
+
+    // Indicador flotante en medio de cada bloque (entre dos lanzamientos): % de
+    // cambio del PROMEDIO por trade del champion de ese bloque respecto al
+    // promedio del champion anterior. El bloque del champion actual va desde su
+    // lanzamiento hasta el borde derecho.
+    const ascMarks = shown.filter((m) => !m.pinned).slice().sort((a, b) => a.ms - b.ms);
+    const rightX = W - padR;
+    const promoDeltas = [];
+    for (let j = 1; j < ascMarks.length; j++) {
+        const startX = Xt(ascMarks[j].ms);
+        const endX = j + 1 < ascMarks.length ? Xt(ascMarks[j + 1].ms) : rightX;
+        const prevAvg = Number(ascMarks[j - 1].avg_profit) || 0;
+        const curAvg = Number(ascMarks[j].avg_profit) || 0;
+        const pct = Math.abs(prevAvg) > 1e-6 ? ((curAvg - prevAvg) / Math.abs(prevAvg)) * 100 : null;
+        promoDeltas.push({
+            leftPct: (((startX + endX) / 2) / W) * 100,
+            pct,
+            up: curAvg >= prevAvg,
+        });
+    }
 
     // Punto más cercano por distancia en píxeles (el eje ya no es uniforme).
     const nearestIdx = (svgX) => {
@@ -141,7 +226,7 @@ export function BigChart({ data, times, steps, markers = [], domain }) {
 
     const hv = hover != null ? {
         leftPct: (X(hover) / W) * 100,
-        topPct: (Y(series[hover]) / H) * 100,
+        topPct: (Y(clamp(series[hover], min, max)) / H) * 100,
         value: series[hover],
         step: steps && steps[hover] != null ? steps[hover] : null,
         time: hasTimes ? times[hover] : null,
@@ -175,7 +260,8 @@ export function BigChart({ data, times, steps, markers = [], domain }) {
                 <path d={area} fill="url(#carea)" />
                 <path d={d} fill="none" stroke="url(#cstroke)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" filter="url(#glow)" />
                 {promoLines.map((p, i) => (
-                    <line key={'pl' + i} x1={p.svgX} y1={padT - 2} x2={p.svgX} y2={H - padB} stroke="#f5b73d" strokeWidth="1.3" strokeDasharray="4 3" opacity="0.9" />
+                    <line key={'pl' + i} x1={p.svgX} y1={padT - 2} x2={p.svgX} y2={H - padB} stroke="#f5b73d"
+                        strokeWidth={p.recent ? 1.8 : 1.1} strokeDasharray="4 3" opacity={p.recent ? 0.95 : 0.45} />
                 ))}
                 {hv && <line x1={X(hover)} y1={padT} x2={X(hover)} y2={H - padB} stroke="rgba(47,240,207,0.45)" strokeWidth="1" strokeDasharray="3 3" />}
                 <circle cx={last[0]} cy={last[1]} r="4" fill="#2ff0cf" filter="url(#glow)" />
@@ -190,27 +276,38 @@ export function BigChart({ data, times, steps, markers = [], domain }) {
 
             {xTicks.length > 0 && (
                 <div className="chart-axis-x">
-                    {xTicks.map((t, i) => (
-                        <span key={i} className="ax-x" style={{ left: t.leftPct + '%' }}>{t.label}</span>
-                    ))}
+                    {xTicks.map((t, i) => {
+                        const align = i === 0 ? 'translateX(0)' : i === xTicks.length - 1 ? 'translateX(-100%)' : 'translateX(-50%)';
+                        return <span key={i} className="ax-x" style={{ left: t.leftPct + '%', transform: align }}>{t.label}</span>;
+                    })}
                 </div>
             )}
 
             {promoLines.map((p, i) => (
-                <span key={'pm' + i} className="chart-promo" style={{ left: p.leftPct + '%' }}
-                    title={'Nuevo champion · ' + fmtTipTime(p.ms) + (p.manual ? ' (manual)' : '')}>
+                <span key={'pm' + i} className={'chart-promo' + (p.pinned ? ' pinned' : '') + (p.recent ? ' recent' : '')} style={{ left: p.leftPct + '%' }}
+                    title={(p.pinned ? 'Champion vigente · desplegado ' : 'Champion ' + (p.generation != null ? 'gen' + p.generation + ' ' : '') + 'lanzado · ') + fmtTipTime(p.ms) + (p.manual ? ' (manual)' : '') + (p.pinned ? ' (antes de la ventana)' : '')}>
                     <span className="cp-flag" />
-                    <span className="cp-label">{p.label}</span>
+                    {p.label && <span className="cp-label">{p.label}</span>}
+                </span>
+            ))}
+
+            {promoDeltas.map((b, i) => (
+                <span key={'pd' + i} className={'chart-delta ' + (b.up ? 'up' : 'down')} style={{ left: b.leftPct + '%' }}
+                    title="Promedio por trade del champion vs. el promedio del anterior">
+                    {b.pct == null
+                        ? (b.up ? '▲' : '▼')
+                        : (b.up ? '▲ ' : '▼ ') + (b.pct >= 0 ? '+' : '') + (Math.abs(b.pct) >= 1000 ? Math.round(b.pct) : b.pct.toFixed(1)) + '%'}
                 </span>
             ))}
 
             {hv && (
                 <>
                     <span className="chart-dot" style={{ left: hv.leftPct + '%', top: hv.topPct + '%' }} />
-                    <div className="chart-tip" style={{ left: hv.leftPct + '%', top: hv.topPct + '%' }}>
+                    <div className={'chart-tip' + (hv.topPct < 30 ? ' below' : '')}
+                        style={{ left: clamp(hv.leftPct, 9, 91) + '%', top: hv.topPct + '%' }}>
                         <span className={'tip-val ' + (hv.value >= 0 ? 'pos' : 'neg')}>{signedMoney(hv.value)}</span>
                         {hv.step != null && hv.step !== 0 && (
-                            <span className={'tip-step ' + (hv.step >= 0 ? 'pos' : 'neg')}>{signedMoney(hv.step)} en esta op</span>
+                            <span className={'tip-step ' + (hv.step >= 0 ? 'pos' : 'neg')}>{signedMoney(hv.step)} en este lapso</span>
                         )}
                         {hv.time != null && <span className="tip-time">{fmtTipTime(hv.time)}</span>}
                     </div>

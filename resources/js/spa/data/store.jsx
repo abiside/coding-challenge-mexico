@@ -16,6 +16,55 @@ export function useNifty() {
 const FAST_MS = 4000;   // mercado + engine
 const SLOW_MS = 6000;   // simulación + wallets + trades + oportunidades
 
+// Cadencia de revelado del feed en vivo. En calma mostramos un item cada
+// REVEAL_BASE_MS (sensación de secuencia constante). Si el backend empuja una
+// ráfaga y se acumula backlog, acortamos el intervalo de forma proporcional
+// (hasta REVEAL_MIN_MS) y revelamos en lotes pequeños para alcanzar el ritmo
+// sin que se sienta un volcado de golpe.
+const REVEAL_BASE_MS = 750;
+const REVEAL_MIN_MS = 60;
+const REVEAL_DRAIN_MS = 2500; // objetivo aproximado para vaciar el backlog actual
+
+/* Cola de reproducción: encola lo que llega por websocket y lo revela de a poco.
+   Devuelve [shown, enqueue]; `shown` mantiene el mismo shape que antes
+   (más nuevos primero, recortado a `cap`). */
+function usePacedFeed(cap = 30) {
+    const [shown, setShown] = useState([]);
+    const queueRef = useRef([]); // FIFO: el más viejo pendiente primero
+    const timerRef = useRef(null);
+
+    useEffect(() => () => {
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = null;
+    }, []);
+
+    const pump = useCallback(() => {
+        if (timerRef.current != null) return; // ya está drenando
+        const tick = () => {
+            const q = queueRef.current;
+            const pending = q.length;
+            if (pending === 0) { timerRef.current = null; return; }
+            // A más backlog, lote un poco mayor + intervalo más corto.
+            const batch = Math.max(1, Math.ceil(pending / 30));
+            const drained = q.splice(0, batch);
+            const stamped = drained.map((it) => ({ ...it, _flashAt: Date.now() }));
+            // `drained` viene en orden de llegada (viejo→nuevo); al anteponer
+            // invertimos para que el más nuevo del lote quede arriba.
+            setShown((prev) => [...stamped.reverse(), ...prev].slice(0, cap));
+            const wait = Math.min(REVEAL_BASE_MS, Math.max(REVEAL_MIN_MS, Math.round(REVEAL_DRAIN_MS / pending)));
+            timerRef.current = setTimeout(tick, wait);
+        };
+        timerRef.current = setTimeout(tick, REVEAL_BASE_MS);
+    }, [cap]);
+
+    const enqueue = useCallback((item) => {
+        queueRef.current.push(item);
+        pump();
+    }, [pump]);
+
+    return [shown, enqueue];
+}
+
 export function NiftyProvider({ user, children }) {
     const [simulation, setSimulation] = useState({ active: false, stats: { trades: 0, realized_pnl: 0 } });
     const [wallets, setWallets] = useState([]);
@@ -30,7 +79,12 @@ export function NiftyProvider({ user, children }) {
     const [engineLive, setEngineLive] = useState(null);
     const [settings, setSettings] = useState(null);
     const [options, setOptions] = useState({ exchanges: [], symbols: [], assets: [] });
-    const [liveFeed, setLiveFeed] = useState([]);
+    // Feeds en vivo pasados por una cola de reproducción: aunque el backend
+    // empuje varios de golpe, se muestran de a uno para dar sensación de flujo.
+    const [liveFeed, enqueueOpp] = usePacedFeed(30);
+    // Feed en vivo de ciclos triangulares: ciclos detectados, evaluados y
+    // ejecutados por el `CycleEngine`. Independiente del feed de opps 2-patas.
+    const [cycleFeed, enqueueCycle] = usePacedFeed(30);
     const [error, setError] = useState(null);
     const [busy, setBusy] = useState(false);
     const channelRef = useRef(null);
@@ -95,8 +149,14 @@ export function NiftyProvider({ user, children }) {
             const echo = getEcho(token);
             channel = echo.private(`arbitrage.user.${user.id}`);
             channel.listen('.arbitrage.opportunity.processed', (payload) => {
-                const opp = normalizeOpportunity({ ...payload, _flashAt: Date.now() });
-                setLiveFeed((prev) => [opp, ...prev].slice(0, 30));
+                // _flashAt se sella al revelar (en la cola), no al llegar.
+                enqueueOpp(normalizeOpportunity({ ...payload }));
+            });
+            // Ciclos triangulares: payload con cycle{label, legs[], net_profit, ...}
+            // se mantiene crudo (sin normalizar a la estructura de opps 2-patas)
+            // porque su estructura es multi-pata y se renderiza aparte.
+            channel.listen('.arbitrage.cycle.processed', (payload) => {
+                enqueueCycle({ ...payload });
             });
             // Métricas del engine (embudo de descartes) emitidas en cada heartbeat.
             channel.listen('.arbitrage.engine.metrics', (payload) => {
@@ -109,10 +169,11 @@ export function NiftyProvider({ user, children }) {
         return () => {
             if (channel) {
                 try { channel.stopListening('.arbitrage.opportunity.processed'); } catch { /* noop */ }
+                try { channel.stopListening('.arbitrage.cycle.processed'); } catch { /* noop */ }
                 try { channel.stopListening('.arbitrage.engine.metrics'); } catch { /* noop */ }
             }
         };
-    }, [user]);
+    }, [user, enqueueOpp, enqueueCycle]);
 
     const startStop = useCallback(async () => {
         setBusy(true);
@@ -155,7 +216,7 @@ export function NiftyProvider({ user, children }) {
     const value = {
         user,
         simulation, wallets, trades, opportunities, market, engine, engineLive, settings, options,
-        promotions, liveFeed, error, busy, btcPrice,
+        promotions, liveFeed, cycleFeed, error, busy, btcPrice,
         actions: { startStop, saveSettings, addWallet, removeWallet, refreshFast, refreshSlow, loadSettings, setError },
     };
 
