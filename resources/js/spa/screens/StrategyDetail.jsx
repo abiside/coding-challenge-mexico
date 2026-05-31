@@ -28,46 +28,40 @@ const CROSS_TABS = [
     ['cfg', 'Configuración', 'cfg'],
 ];
 
-function CrossExchangeDetail({ strategy, onOpen }) {
-    const { simulation } = useNifty();
+function CrossExchangeDetail({ onOpen, onNav }) {
     const [tab, setTab] = useState('dash');
-    const active = simulation.active;
 
     let view;
     switch (tab) {
         case 'opp': view = <OppsScreen onOpen={onOpen} />; break;
         case 'engine': view = <EngineScreen />; break;
         case 'cfg': view = <ConfigScreen />; break;
-        default: view = <DashboardScreen onOpen={onOpen} />;
+        default: view = <DashboardScreen onOpen={onOpen} onNav={onNav} />;
     }
 
+    // Nota: las pantallas montadas (Dashboard/Opps/Engine/Config) traen su propio
+    // wrapper `.content`. Para que las tabs no queden más anchas que el cuerpo,
+    // van en su propio `.content` hermano (mismo padding horizontal) en lugar de
+    // anidar un `.content` dentro de otro.
     return (
-        <div className="content">
-            <div className="panel panel-pad" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                <I.opp style={{ width: 18, height: 18, color: 'var(--turq)' }} />
-                <div style={{ flex: 1, minWidth: 220 }}>
-                    <div style={{ fontWeight: 600, color: 'var(--tx-hi)' }}>{strategy.name}</div>
-                    <div className="cfg-desc" style={{ margin: 0 }}>Arbitraje multi-exchange · 2 patas + ciclos triangulares</div>
-                </div>
-                <span className={'badge ' + (active ? 'exec' : 'expired')}><span className="d" />{active ? 'ENGINE ACTIVO' : 'ENGINE PAUSADO'}</span>
-                <span className="cfg-desc" style={{ margin: 0, fontSize: 11 }}>Controla el engine desde la barra superior →</span>
-            </div>
-
-            <div className="panel" style={{ padding: 0 }}>
-                <div className="filters" style={{ padding: '10px 16px', gap: 6, flexWrap: 'wrap' }}>
-                    {CROSS_TABS.map(([key, label, icon]) => {
-                        const Icon = I[icon];
-                        return (
-                            <span key={key} className={'chip' + (tab === key ? ' on' : '')} onClick={() => setTab(key)} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                                <Icon style={{ width: 13, height: 13 }} />{label}
-                            </span>
-                        );
-                    })}
+        <>
+            <div className="content" style={{ paddingBottom: 0 }}>
+                <div className="panel" style={{ padding: 0 }}>
+                    <div className="filters" style={{ padding: '10px 16px', gap: 6, flexWrap: 'wrap' }}>
+                        {CROSS_TABS.map(([key, label, icon]) => {
+                            const Icon = I[icon];
+                            return (
+                                <span key={key} className={'chip' + (tab === key ? ' on' : '')} onClick={() => setTab(key)} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                                    <Icon style={{ width: 13, height: 13 }} />{label}
+                                </span>
+                            );
+                        })}
+                    </div>
                 </div>
             </div>
 
             {view}
-        </div>
+        </>
     );
 }
 
@@ -336,7 +330,7 @@ function TradingAi({ strategy }) {
     );
 }
 
-function TradingDetail({ strategy, signals }) {
+export function TradingDetail({ strategy, signals }) {
     const { strategyLive } = useNifty();
     const [tab, setTab] = useState('general');
     const metrics = strategyLive?.[strategy.id] || strategy.metrics || null;
@@ -345,17 +339,6 @@ function TradingDetail({ strategy, signals }) {
 
     return (
         <div className="content">
-            <div className="panel panel-pad" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                <I.vol style={{ width: 18, height: 18, color: 'var(--accent)' }} />
-                <div style={{ flex: 1, minWidth: 220 }}>
-                    <div style={{ fontWeight: 600, color: 'var(--tx-hi)' }}>{strategy.name}</div>
-                    <div className="cfg-desc" style={{ margin: 0 }}>Trading{strategy.algorithm ? ' · ' + strategy.algorithm.replace(/_/g, ' ') : ''} · billetera simulada USDT</div>
-                </div>
-                {metrics?.circuit_breaker && <span className="badge reject"><span className="d" />CB: {metrics.circuit_breaker}</span>}
-                <span className={'badge ' + (active ? 'exec' : 'expired')}><span className="d" />{active ? 'ACTIVA' : 'DETENIDA'}</span>
-                <span className="cfg-desc" style={{ margin: 0, fontSize: 11 }}>Controla la estrategia desde la barra superior →</span>
-            </div>
-
             {active && !running && (
                 <div className="panel panel-pad" style={{ borderLeft: '3px solid var(--warn)' }}>
                     <div style={{ fontWeight: 600, color: 'var(--tx-hi)' }}>Calentando el engine…</div>
@@ -380,7 +363,7 @@ function TradingDetail({ strategy, signals }) {
     );
 }
 
-export default function StrategyDetail({ id, onOpen }) {
+export default function StrategyDetail({ id, onOpen, onNav }) {
     const { strategies, strategySignals } = useNifty();
     const strategy = (strategies?.data || []).find((s) => s.id === id);
 
@@ -389,7 +372,7 @@ export default function StrategyDetail({ id, onOpen }) {
     }
 
     if (strategy.type === 'cross_exchange') {
-        return <CrossExchangeDetail strategy={strategy} onOpen={onOpen} />;
+        return <CrossExchangeDetail onOpen={onOpen} onNav={onNav} />;
     }
 
     const signals = strategySignals?.[id] || [];

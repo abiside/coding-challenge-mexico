@@ -11,11 +11,11 @@ import { fmt, signedMoney, relativeTime } from '../nifty/format';
 
 const TYPE_LABEL = { trading: 'Trading', cross_exchange: 'Cross-exchange' };
 
-function liveMetrics(item, strategyLive) {
+export function liveMetrics(item, strategyLive) {
     return strategyLive?.[item.id] || item.metrics || null;
 }
 
-function StrategyCard({ item, live, onOpen, actions, busy }) {
+export function StrategyCard({ item, live, onOpen, actions, busy }) {
     const isTrading = item.type === 'trading';
     const realized = live?.realized_pnl ?? item.realized_pnl ?? 0;
     const unrealized = Number(live?.unrealized_pnl) || 0;
@@ -32,6 +32,7 @@ function StrategyCard({ item, live, onOpen, actions, busy }) {
                 <button className="link-btn" style={{ fontWeight: 600, color: 'var(--tx-hi)', fontSize: 14, background: 'none', border: 0, cursor: 'pointer', textAlign: 'left' }} onClick={() => onOpen(item)}>
                     {item.name}
                 </button>
+                {!isTrading && <span className="tag" title="Estrategia principal de la aplicación">Principal</span>}
                 <span className={'badge ' + (active ? 'exec' : 'expired')} style={{ marginLeft: 'auto' }}><span className="d" />{active ? 'ACTIVA' : 'DETENIDA'}</span>
             </div>
             <div className="cfg-desc" style={{ margin: 0 }}>{TYPE_LABEL[item.type] || item.type}{item.algorithm ? ' · ' + item.algorithm.replace(/_/g, ' ') : ''}</div>

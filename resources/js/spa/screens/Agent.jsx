@@ -151,37 +151,34 @@ const TABS = [
     ['autonomous', 'Autónomo (Autopilot)', 'bolt'],
 ];
 
-export default function AgentScreen() {
-    const [tab, setTab] = useState('advisor');
+export default function AgentScreen({ initialTab }) {
+    const [tab, setTab] = useState(initialTab === 'autonomous' ? 'autonomous' : 'advisor');
+    const autonomous = tab === 'autonomous';
 
+    // El modo autónomo monta AutopilotScreen, que trae su propio wrapper
+    // `.content`. Para no anidar dos `.content` (lo que desalinea el cuerpo
+    // respecto al header), las cabeceras van en su `.content` y el Autopilot se
+    // renderiza como hermano con el mismo padding horizontal.
     return (
-        <div className="content">
-            <div className="panel panel-pad" style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                <I.autopilot style={{ width: 18, height: 18, color: 'var(--fuchsia)' }} />
-                <div style={{ flex: 1, minWidth: 240 }}>
-                    <div style={{ fontWeight: 600, color: 'var(--tx-hi)' }}>Agente sobre tus estrategias<InfoTip g="agente_ia" /></div>
-                    <div className="cfg-desc">
-                        Un agente que vigila todas tus estrategias. En <strong>modo asesor</strong> recomienda focos, alertas y
-                        ajustes (tú decides). En <strong>modo autónomo</strong> opera por ti: hoy corre el champion-challenger del
-                        arbitraje; para trading, auto-aplicar sugerencias llegará como opción opt-in por estrategia.
+        <>
+            <div className="content" style={autonomous ? { paddingBottom: 0 } : undefined}>
+                <div className="panel" style={{ padding: 0 }}>
+                    <div className="filters" style={{ padding: '10px 16px', gap: 6 }}>
+                        {TABS.map(([key, label, icon]) => {
+                            const Icon = I[icon];
+                            return (
+                                <span key={key} className={'chip' + (tab === key ? ' on' : '')} onClick={() => setTab(key)} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                                    <Icon style={{ width: 13, height: 13 }} />{label}
+                                </span>
+                            );
+                        })}
                     </div>
                 </div>
+
+                {tab === 'advisor' && <AdvisorView />}
             </div>
 
-            <div className="panel" style={{ padding: 0 }}>
-                <div className="filters" style={{ padding: '10px 16px', gap: 6 }}>
-                    {TABS.map(([key, label, icon]) => {
-                        const Icon = I[icon];
-                        return (
-                            <span key={key} className={'chip' + (tab === key ? ' on' : '')} onClick={() => setTab(key)} style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                                <Icon style={{ width: 13, height: 13 }} />{label}
-                            </span>
-                        );
-                    })}
-                </div>
-            </div>
-
-            {tab === 'advisor' ? <AdvisorView /> : <AutopilotScreen />}
-        </div>
+            {autonomous && <AutopilotScreen />}
+        </>
     );
 }

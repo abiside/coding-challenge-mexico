@@ -1,5 +1,5 @@
 /* NIFTY — shared widgets: charts, controls, indicators (portado del diseño) */
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { stageLabel, signedMoney, fmtCompact, fmt, normalizeCycle, mergeCycles } from './format';
 import { I } from './icons';
 import { InfoTip } from './InfoTip';
@@ -13,30 +13,39 @@ export function Th({ children, info, ...rest }) {
 
 /* ---------- Sparkline ---------- */
 export function Sparkline({ data, color = 'var(--turq)', h = 30 }) {
+    // id de gradiente único por instancia: evita que dos sparklines con el mismo
+    // color/longitud compartan <defs> y se "roben" el relleno (glitch de color).
+    const gid = useId().replace(/:/g, '');
     const w = 130;
     if (!data || data.length < 2) {
         return <svg className="spark" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" />;
     }
     const min = Math.min(...data), max = Math.max(...data);
     const range = max - min || 1;
+    // Margen lateral: la curva no se pega a los bordes, así no quedan cuñas
+    // verticales duras en las esquinas al cerrar el área.
+    const px = 1.5;
+    const iw = w - px * 2;
     const pts = data.map((v, i) => {
-        const x = (i / (data.length - 1)) * w;
+        const x = px + (i / (data.length - 1)) * iw;
         const y = h - 3 - ((v - min) / range) * (h - 6);
         return [x, y];
     });
     const line = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
-    const area = line + ` L${w} ${h} L0 ${h} Z`;
-    const id = 'sg' + Math.round(min) + data.length + color.length;
+    const x0 = pts[0][0].toFixed(1);
+    const xN = pts[pts.length - 1][0].toFixed(1);
+    const area = line + ` L${xN} ${h} L${x0} ${h} Z`;
+    const id = 'sg' + gid;
     return (
         <svg className="spark" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
             <defs>
                 <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={color} stopOpacity="0.28" />
+                    <stop offset="0%" stopColor={color} stopOpacity="0.22" />
                     <stop offset="100%" stopColor={color} stopOpacity="0" />
                 </linearGradient>
             </defs>
             <path d={area} fill={`url(#${id})`} />
-            <path d={line} fill="none" stroke={color} strokeWidth="1.6" strokeLinejoin="round" strokeLinecap="round" />
+            <path d={line} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
         </svg>
     );
 }
@@ -559,9 +568,9 @@ export function Donut({ segments, size = 132, thickness = 16, label, sub }) {
 }
 
 /* ---------- Toggle switch ---------- */
-export function Toggle({ on, onChange }) {
+export function Toggle({ on, onChange, disabled }) {
     return (
-        <button className={'toggle' + (on ? ' on' : '')} onClick={() => onChange(!on)} aria-pressed={on}>
+        <button className={'toggle' + (on ? ' on' : '')} onClick={() => onChange(!on)} aria-pressed={on} disabled={disabled}>
             <span className="knob" />
         </button>
     );

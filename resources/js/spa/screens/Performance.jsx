@@ -2,11 +2,12 @@
    Cabecera consolidada (trading + arbitraje) y, debajo, el detalle analítico
    del arbitraje cross-exchange (derivado de trades + oportunidades). */
 import { useEffect, useState } from 'react';
+import { api } from '../client';
 import { useNifty } from '../data/store';
 import { I } from '../nifty/icons';
 import { BigChart, BarChart, Columns, Donut, Segmented } from '../nifty/widgets';
 import { InfoTip } from '../nifty/InfoTip';
-import { derivePerf, deriveChartSeries, fmt, signedMoney } from '../nifty/format';
+import { derivePerf, deriveChartSeries, equityToChartSeries, fmt, signedMoney } from '../nifty/format';
 
 function HBars({ rows }) {
     const maxAbs = Math.max(...rows.map((r) => Math.abs(r.pnl)), 0) || 1;
@@ -42,7 +43,21 @@ export default function PerfScreen() {
     const { trades, opportunities, strategies, transactions, actions } = useNifty();
     const [tf, setTf] = useState('week');
     const p = derivePerf(trades, opportunities);
-    const chartSeries = deriveChartSeries(trades, tf);
+
+    // Curva de equity desde el servidor (historia COMPLETA): el feed local de
+    // trades está acotado (~200), así que sumar sobre él subestima el acumulado.
+    // `equity.total` = P&L realizado de todos los trades, igual que el Dashboard.
+    const [equity, setEquity] = useState(null);
+    useEffect(() => {
+        let alive = true;
+        const load = () => api(`/arbitrage/trades/equity?tf=${tf}`).then((r) => { if (alive) setEquity(r); }).catch(() => {});
+        load();
+        const id = setInterval(load, 6000);
+        return () => { alive = false; clearInterval(id); };
+    }, [tf]);
+
+    const arbPnl = equity ? equity.total : p.pnlAcc;
+    const chartSeries = equity ? equityToChartSeries(equity) : deriveChartSeries(trades, tf);
 
     // Ledger global para win rate consolidado (todas las estrategias).
     useEffect(() => {
@@ -52,17 +67,17 @@ export default function PerfScreen() {
     }, [actions]);
 
     // Consolidado por estrategia. El arbitraje no acumula equity de trading, así
-    // que su P&L realizado se toma del análisis de trades (p.pnlAcc).
+    // que su P&L realizado se toma del total de equity del servidor (arbPnl).
     const cons = strategies?.consolidated;
     const byStrat = cons?.by_strategy || [];
     const tradingStrats = byStrat.filter((s) => s.type === 'trading');
     const tradingRealized = tradingStrats.reduce((a, s) => a + (Number(s.realized_pnl) || 0), 0);
     const tradingUnreal = tradingStrats.reduce((a, s) => a + (Number(s.unrealized_pnl) || 0), 0);
-    const globalRealized = p.pnlAcc + tradingRealized;
+    const globalRealized = arbPnl + tradingRealized;
 
     const pnlBars = byStrat.map((s) => ({
         label: s.name,
-        pnl: s.type === 'cross_exchange' ? p.pnlAcc : (Number(s.realized_pnl) || 0),
+        pnl: s.type === 'cross_exchange' ? arbPnl : (Number(s.realized_pnl) || 0),
     }));
 
     const txs = transactions?.data || [];
@@ -99,7 +114,7 @@ export default function PerfScreen() {
 
             <div className="sec-title"><span className="tag">Detalle · Arbitraje cross-exchange</span><span className="ln" /></div>
             <div className="grid-3" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
-                <div className="panel mtile hud" style={{ background: 'linear-gradient(150deg, rgba(47,240,207,0.07), transparent 70%)' }}><div className="ml">P&L acumulado<InfoTip g="pnl_acumulado" /></div><div className={'mv ' + (p.pnlAcc >= 0 ? 'pos' : 'neg')}>{p.pnlAcc >= 0 ? '+' : '−'}${fmt(Math.abs(p.pnlAcc))}</div></div>
+                <div className="panel mtile hud" style={{ background: 'linear-gradient(150deg, rgba(47,240,207,0.07), transparent 70%)' }}><div className="ml">P&L acumulado<InfoTip g="pnl_acumulado" /></div><div className={'mv ' + (arbPnl >= 0 ? 'pos' : 'neg')}>{arbPnl >= 0 ? '+' : '−'}${fmt(Math.abs(arbPnl))}</div></div>
                 <div className="panel mtile"><div className="ml">P&L del día<InfoTip g="pnl_dia" /></div><div className={'mv ' + (p.pnlDay >= 0 ? 'pos' : 'neg')}>{p.pnlDay >= 0 ? '+' : '−'}${fmt(Math.abs(p.pnlDay))}</div></div>
                 <div className="panel mtile"><div className="ml">Mejor operación</div><div className="mv pos">+${p.best.toFixed(2)}</div></div>
                 <div className="panel mtile"><div className="ml">Peor operación</div><div className="mv neg">−${Math.abs(p.worst).toFixed(2)}</div></div>

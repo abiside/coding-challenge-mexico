@@ -3,11 +3,85 @@ import { useState, useEffect } from 'react';
 import { api } from '../client';
 import { useNifty } from '../data/store';
 import { I } from '../nifty/icons';
-import { Kpi, BigChart, OppRow, Lat, Segmented, CyclesPanel, Th } from '../nifty/widgets';
-import { deriveKpis, deriveChartSeries, equityToChartSeries, deriveWinRateSpark, windowTotal, normalizeOpportunity, deriveMarketRows, fmt, signedMoney } from '../nifty/format';
+import { Kpi, BigChart, OppRow, Lat, Segmented, CyclesPanel, Th, Toggle, MultiLineChart, lineColor } from '../nifty/widgets';
+import { InfoTip } from '../nifty/InfoTip';
+import { deriveKpis, deriveChartSeries, equityToChartSeries, deriveWinRateSpark, windowTotal, normalizeOpportunity, deriveMarketRows, deriveEfficiency, fmt, fmtLatency, signedMoney } from '../nifty/format';
 
-export default function DashboardScreen({ onOpen }) {
-    const { trades, opportunities, market, liveFeed, engine, promotions, cycleFeed, cycles, cyclesSummary } = useNifty();
+/* Gráfica compacta de champion-challenger (autopilot) que aprovecha el hueco
+   bajo la gráfica de P&L. Muestra el P&L acumulado por estrategia (igual que en
+   Agente → Autónomo), con encendido/apagado del autopilot y acceso a su config. */
+function ChallengersChart({ onNav }) {
+    const [settings, setSettings] = useState(null);
+    const [series, setSeries] = useState({ axis: [], series: [], markers: [] });
+    const [busy, setBusy] = useState(false);
+
+    const refresh = async () => {
+        try {
+            const [st, sr] = await Promise.all([api('/arbitrage/settings'), api('/arbitrage/strategies/series')]);
+            setSettings(st.data);
+            setSeries(sr);
+        } catch { /* se reintenta en el siguiente ciclo */ }
+    };
+    useEffect(() => {
+        refresh();
+        const t = setInterval(refresh, 8000);
+        return () => clearInterval(t);
+    }, []);
+
+    const on = !!settings?.autopilot_enabled;
+    const toggle = async () => {
+        if (!settings) return;
+        setBusy(true);
+        try {
+            await api('/arbitrage/autopilot', { method: 'POST', body: { enabled: !on } });
+            await refresh();
+        } catch { /* el toggle reflejará el estado real al refrescar */ } finally {
+            setBusy(false);
+        }
+    };
+
+    const chartSeries = series.series || [];
+    const hasSeries = chartSeries.some((s) => (s.points || []).length > 1);
+
+    return (
+        <div className="panel chal-panel">
+            <div className="panel-h">
+                <I.autopilot style={{ width: 15, height: 15, color: 'var(--fuchsia)' }} />
+                <h2>Challengers · autopilot<InfoTip g="challenger" /></h2>
+                <div className="right" style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                    <span className={'chal-state ' + (on ? 'on' : 'off')}>{on ? 'Activo' : 'Apagado'}</span>
+                    <Toggle on={on} onChange={toggle} disabled={busy || !settings} />
+                    <button className="btn icon" title="Configurar en Agente → Autónomo" onClick={() => onNav && onNav('agent-auto')}><I.cfg style={{ width: 15, height: 15 }} /></button>
+                </div>
+            </div>
+
+            {hasSeries ? (
+                <>
+                    <div className="chart-wrap chal-chart"><MultiLineChart axis={series.axis} series={chartSeries} markers={series.markers} h={150} /></div>
+                    <div className="chal-pills">
+                        {chartSeries.map((s, idx) => {
+                            const v = Number(s.final || 0);
+                            return (
+                                <span className="chal-pill" key={s.id} title={s.status === 'champion' ? 'Champion (config aplicada)' : `Challenger generación ${s.generation}`}>
+                                    <span className="sw" style={{ background: lineColor(s, idx) }} />
+                                    {s.status === 'champion' ? 'Champion' : 'g' + s.generation}
+                                    <span className={'num ' + (v >= 0 ? 'pos' : 'neg')}>{signedMoney(v)}</span>
+                                </span>
+                            );
+                        })}
+                    </div>
+                </>
+            ) : (
+                <div className="empty-note" style={{ padding: '24px 16px', fontSize: 12.5 }}>
+                    {on ? 'Esperando challengers del optimizador… (se generan en el próximo ciclo)' : 'Autopilot apagado · enciéndelo para que el agente proponga y compare challengers shadow.'}
+                </div>
+            )}
+        </div>
+    );
+}
+
+export default function DashboardScreen({ onOpen, onNav }) {
+    const { trades, opportunities, market, liveFeed, engine, engineLive, promotions, cycleFeed, cycles, cyclesSummary } = useNifty();
     const [tf, setTf] = useState('m15');
 
     // Curva de equity ESTABLE desde el servidor: evita que la historia se
@@ -38,6 +112,21 @@ export default function DashboardScreen({ onOpen }) {
     const rows = deriveMarketRows(market);
     const connected = rows.filter((r) => r.conn === 'ok').length;
 
+    // Métricas de eficiencia del motor: latencia de evaluación por oportunidad,
+    // throughput, conversión y frescura del feed.
+    const live = engineLive || engine.live || null;
+    const eff = deriveEfficiency(opportunities, engine.metrics, live, rows);
+    const effTiles = [
+        { l: 'Evaluación media / oportunidad', v: fmtLatency(eff.avgEvalUs), g: 'tiempo_evaluacion', sub: eff.sampleSize ? `muestra de ${eff.sampleSize} opp` : 'sin datos' },
+        { l: 'Evaluación p95', v: fmtLatency(eff.p95EvalUs), g: 'eval_p95', sub: 'el 95% se evalúa por debajo' },
+        { l: 'Evaluación máx', v: fmtLatency(eff.maxEvalUs), g: 'eval_max', sub: 'peor caso observado' },
+        { l: 'Latencia de datos (feed)', v: eff.avgFeedMs != null ? Math.round(eff.avgFeedMs) + ' ms' : '—', g: 'latencia_feed', sub: eff.maxFeedMs != null ? 'máx ' + Math.round(eff.maxFeedMs) + ' ms' : 'frescura del order book' },
+        { l: 'Conversión detección → ejecución', v: eff.conversion != null ? eff.conversion.toFixed(1) + '%' : '—', g: 'conversion_ejecucion', sub: eff.detectedHour != null ? `${eff.executedHour ?? 0} / ${eff.detectedHour} en 1h` : 'oportunidades que se ejecutan' },
+        { l: 'Tasa de aprobación', v: eff.approvalRate != null ? eff.approvalRate.toFixed(1) + '%' : '—', g: 'tasa_aprobacion', sub: 'execute vs reject del risk manager' },
+        { l: 'Eficiencia de detección', v: eff.detectEff != null ? eff.detectEff.toFixed(2) + '%' : '—', g: 'eficiencia_deteccion', sub: eff.snapshots != null ? fmt(eff.snapshots, 0) + ' snapshots' : 'candidatos / snapshots' },
+        { l: 'Margen neto medio', v: eff.avgNetMarginPct != null ? eff.avgNetMarginPct.toFixed(3) + '%' : '—', g: 'margen_neto_medio', sub: 'calidad del edge evaluado' },
+    ];
+
     return (
         <div className="content">
             <div className="kpis">
@@ -52,22 +141,26 @@ export default function DashboardScreen({ onOpen }) {
             </div>
 
             <div className="grid-2">
-                <div className="panel hud">
-                    <div className="panel-h">
-                        <I.perf style={{ width: 16, height: 16, color: 'var(--turq)' }} />
-                        <div><h2>Rendimiento · P&L acumulado</h2></div>
-                        <div className="right">
-                            <Segmented value={tf} onChange={setTf} options={[{ value: 'm15', label: '15 min' }, { value: 'h1', label: '1 h' }, { value: 'h4', label: '4 h' }]} />
+                <div className="grid-col">
+                    <div className="panel hud">
+                        <div className="panel-h">
+                            <I.perf style={{ width: 16, height: 16, color: 'var(--turq)' }} />
+                            <div><h2>Rendimiento · P&L acumulado</h2></div>
+                            <div className="right">
+                                <Segmented value={tf} onChange={setTf} options={[{ value: 'm15', label: '15 min' }, { value: 'h1', label: '1 h' }, { value: 'h4', label: '4 h' }]} />
+                            </div>
                         </div>
+                        <div className="chart-legend">
+                            <span className="lg"><span className="swatch" style={{ background: 'linear-gradient(90deg,#ff39a8,#2ff0cf)' }} />P&L neto simulado</span>
+                            <span className="lg"><span className="swatch" style={{ background: 'repeating-linear-gradient(90deg,#f5b73d 0 4px,transparent 4px 7px)' }} />Nuevo champion</span>
+                            <span className="lg" style={{ marginLeft: 'auto', color: tfTotal >= 0 ? 'var(--profit)' : 'var(--loss)' }}>
+                                <span className="num">{signedMoney(tfTotal)}</span>
+                            </span>
+                        </div>
+                        <div className="chart-wrap"><BigChart data={chart} times={chartSeries.times} steps={chartSeries.steps} domain={chartSeries.domain} markers={promotions} /></div>
                     </div>
-                    <div className="chart-legend">
-                        <span className="lg"><span className="swatch" style={{ background: 'linear-gradient(90deg,#ff39a8,#2ff0cf)' }} />P&L neto simulado</span>
-                        <span className="lg"><span className="swatch" style={{ background: 'repeating-linear-gradient(90deg,#f5b73d 0 4px,transparent 4px 7px)' }} />Nuevo champion</span>
-                        <span className="lg" style={{ marginLeft: 'auto', color: tfTotal >= 0 ? 'var(--profit)' : 'var(--loss)' }}>
-                            <span className="num">{signedMoney(tfTotal)}</span>
-                        </span>
-                    </div>
-                    <div className="chart-wrap"><BigChart data={chart} times={chartSeries.times} steps={chartSeries.steps} domain={chartSeries.domain} markers={promotions} /></div>
+
+                    <ChallengersChart onNav={onNav} />
                 </div>
 
                 <div className="panel">
@@ -84,6 +177,29 @@ export default function DashboardScreen({ onOpen }) {
                         ) : (
                             feed.map((o) => <OppRow key={o.id} o={o} onClick={() => onOpen(o)} />)
                         )}
+                    </div>
+                </div>
+            </div>
+
+            <div className="panel">
+                <div className="panel-h">
+                    <I.engine style={{ width: 16, height: 16, color: 'var(--turq)' }} />
+                    <h2>Eficiencia del motor</h2>
+                    <div className="right">
+                        <span className={'pill ' + (live ? 'live' : '')} style={{ fontSize: '10px', padding: '4px 9px' }}>
+                            <span className="dot" />{live ? 'en vivo' : eff.sampleSize ? 'histórico' : 'sin datos'}
+                        </span>
+                    </div>
+                </div>
+                <div className="panel-pad" style={{ paddingTop: 8 }}>
+                    <div className="grid-3" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+                        {effTiles.map((t, i) => (
+                            <div key={i} className="mtile" style={{ padding: '10px 0' }}>
+                                <div className="ml">{t.l}{t.g && <InfoTip g={t.g} />}</div>
+                                <div className="mv" style={{ fontSize: 20 }}>{t.v}</div>
+                                {t.sub && <div className="mvsub">{t.sub}</div>}
+                            </div>
+                        ))}
                     </div>
                 </div>
             </div>

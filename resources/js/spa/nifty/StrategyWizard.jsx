@@ -57,14 +57,14 @@ export function StrategyWizard({ open, onClose }) {
         setWorking(true);
         setErr(null);
         try {
-            await actions.createStrategy({
+            const created = await actions.createStrategy({
                 name: name || 'Estrategia de trading',
                 type: 'trading',
                 algorithm,
                 initial_usdt: Number(initialUsdt),
                 config: cfg,
             });
-            onClose(true);
+            onClose(created || true);
         } catch (e) {
             setErr(e.message || 'No se pudo crear la estrategia.');
         } finally {
@@ -74,7 +74,7 @@ export function StrategyWizard({ open, onClose }) {
 
     return createPortal(
         <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget && !working) onClose(false); }}>
-            <div className="modal-card" role="dialog" aria-modal="true" aria-label="Nueva estrategia" style={{ maxWidth: 640, width: '92vw' }}>
+            <div className="modal-card" role="dialog" aria-modal="true" aria-label="Nueva estrategia" style={{ maxWidth: 900, width: '94vw' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
                     <div className="brand-mark" style={{ flex: 'none' }}><I.bolt style={{ width: 16, height: 16, color: '#0a0710' }} /></div>
                     <h3 className="modal-title" style={{ margin: 0 }}>Nueva estrategia de trading</h3>
@@ -87,7 +87,7 @@ export function StrategyWizard({ open, onClose }) {
 
                 {err && <div className="alert err" style={{ marginBottom: 8 }}><span className="ad" />{err}</div>}
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, maxHeight: 220, overflowY: 'auto', marginBottom: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, maxHeight: 360, overflowY: 'auto', marginBottom: 12 }}>
                     {(catalog?.algorithms || []).map((a) => {
                         const badge = SIDE_BADGE[a.side] || SIDE_BADGE.both;
                         const on = algorithm === a.algorithm;
@@ -95,10 +95,10 @@ export function StrategyWizard({ open, onClose }) {
                             <button key={a.algorithm} type="button" onClick={() => pick(a.algorithm)}
                                 className="panel panel-pad" style={{ textAlign: 'left', cursor: 'pointer', borderColor: on ? 'var(--accent)' : undefined, borderLeft: on ? '3px solid var(--accent)' : '3px solid transparent' }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                    <span style={{ fontWeight: 600, color: 'var(--tx-hi)', fontSize: 13 }}>{a.name}</span>
+                                    <span style={{ fontWeight: 600, color: 'var(--tx-hi)', fontSize: 14 }}>{a.name}</span>
                                     <span className={'badge ' + badge.cls} style={{ marginLeft: 'auto' }}><span className="d" />{badge.label}</span>
                                 </div>
-                                <div className="cfg-desc" style={{ margin: '4px 0 0', fontSize: 11 }}>{a.description}</div>
+                                <div className="cfg-desc" style={{ margin: '5px 0 0', fontSize: 12, lineHeight: 1.45 }}>{a.description}</div>
                             </button>
                         );
                     })}

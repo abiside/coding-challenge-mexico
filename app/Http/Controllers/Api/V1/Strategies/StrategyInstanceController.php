@@ -49,7 +49,12 @@ class StrategyInstanceController extends Controller
             ['name' => 'Arbitraje cross-exchange', 'algorithm' => null, 'status' => Strategy::STATUS_STOPPED, 'enabled' => true, 'realized_pnl' => 0],
         );
 
-        $strategies = Strategy::where('user_id', $userId)->latest('id')->get();
+        // El arbitraje cross-exchange es la estrategia principal sobre la que se
+        // evalúa la app: siempre va primero; el resto, las más recientes arriba.
+        $strategies = Strategy::where('user_id', $userId)
+            ->orderByRaw("CASE WHEN type = ? THEN 0 ELSE 1 END", [Strategy::TYPE_CROSS_EXCHANGE])
+            ->orderByDesc('id')
+            ->get();
 
         $items = $strategies->map(function (Strategy $s) {
             $metrics = $s->isTrading() ? cache()->get(StrategyCacheKeys::metrics((int) $s->id)) : null;

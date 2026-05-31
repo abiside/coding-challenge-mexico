@@ -544,6 +544,66 @@ export function derivePerf(trades, opportunities) {
     };
 }
 
+/* Métricas de eficiencia/rendimiento del motor: latencia de evaluación por
+   oportunidad (µs), throughput, tasa de conversión detección→ejecución, calidad
+   de aprobación y frescura del feed. Todo derivado de datos reales (oportunidades
+   persistidas, snapshot en vivo del engine, métricas del controller y order book);
+   lo que no se conoce queda en null y la UI lo muestra como "—". */
+function percentile(sorted, p) {
+    if (!sorted.length) return null;
+    const idx = Math.min(sorted.length - 1, Math.max(0, Math.floor(sorted.length * p)));
+    return sorted[idx];
+}
+
+export function deriveEfficiency(opportunities, engineMetrics, live, marketRows) {
+    const opps = opportunities || [];
+
+    const lats = opps
+        .map((o) => Number(o.evaluation_latency_us))
+        .filter((v) => Number.isFinite(v) && v > 0)
+        .sort((a, b) => a - b);
+    const avgEvalUs = lats.length ? lats.reduce((s, v) => s + v, 0) / lats.length : null;
+    const p95EvalUs = percentile(lats, 0.95);
+    const maxEvalUs = lats.length ? lats[lats.length - 1] : null;
+
+    // Throughput observado: tasa de evaluación si el snapshot en vivo trae
+    // snapshots procesados y el uptime del run.
+    const snapshots = live?.snapshots_processed != null ? Number(live.snapshots_processed) : null;
+    const candidates = live?.candidates_detected != null ? Number(live.candidates_detected) : null;
+    const detectEff = (snapshots && snapshots > 0 && candidates != null) ? (candidates / snapshots) * 100 : null;
+
+    // Conversión detección → ejecución (ventana de 1h del controller).
+    const detectedHour = engineMetrics?.opportunities_last_hour;
+    const executedHour = engineMetrics?.executed_last_hour;
+    const conversion = (detectedHour != null && detectedHour > 0 && executedHour != null)
+        ? (executedHour / detectedHour) * 100 : null;
+
+    // Tasa de aprobación del risk manager en la ventana en vivo.
+    const dec = live?.decisions || {};
+    const exec = Number(dec.execute) || 0;
+    const rej = Number(dec.reject) || 0;
+    const approvalRate = (exec + rej) > 0 ? (exec / (exec + rej)) * 100 : null;
+
+    // Frescura del feed: edad media/máx de exchanges con datos frescos (ms).
+    const ages = (marketRows || []).filter((r) => r.conn === 'ok' && r.lat != null).map((r) => Number(r.lat));
+    const avgFeedMs = ages.length ? ages.reduce((s, v) => s + v, 0) / ages.length : null;
+    const maxFeedMs = ages.length ? Math.max(...ages) : null;
+
+    // Margen neto medio de las oportunidades evaluadas (calidad del edge).
+    const margins = opps.map((o) => Number(o.net_margin)).filter((v) => Number.isFinite(v));
+    const avgNetMarginPct = margins.length ? (margins.reduce((s, v) => s + v, 0) / margins.length) * 100 : null;
+
+    return {
+        avgEvalUs, p95EvalUs, maxEvalUs,
+        snapshots, candidates, detectEff,
+        conversion, approvalRate,
+        avgFeedMs, maxFeedMs, avgNetMarginPct,
+        sampleSize: lats.length,
+        detectedHour: detectedHour ?? null,
+        executedHour: executedHour ?? null,
+    };
+}
+
 /* --- Filas de la tabla de mercado --- */
 export function deriveMarketRows(market) {
     const rows = (market?.rows) || [];

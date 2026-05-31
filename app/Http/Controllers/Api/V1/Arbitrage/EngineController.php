@@ -74,7 +74,7 @@ class EngineController extends Controller
         $sinceHour = now()->subHour();
         $metrics = [
             'active' => $run !== null,
-            'mode' => 'Demo',
+            'mode' => 'Simulación',
             'started_at' => $run?->started_at,
             'circuit_breaker_enabled' => (bool) ($setting?->circuit_breaker_enabled ?? false),
             'trades_total' => Trade::where('user_id', $userId)->count(),

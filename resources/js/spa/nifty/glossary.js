@@ -4,6 +4,40 @@
    español. Las claves se referencian desde los componentes con <InfoTip g="clave" />. */
 
 export const GLOSSARY = {
+    // ---------- Eficiencia del motor ----------
+    tiempo_evaluacion: {
+        title: 'Tiempo de evaluación medio por oportunidad',
+        body: 'Cuánto tarda el motor, en promedio, desde que recibe un order book hasta que decide ejecutar o descartar una oportunidad. Se mide en microsegundos (µs) por cada oportunidad evaluada y es el indicador directo de la velocidad del bot: cuanto más bajo, antes reacciona al mercado.',
+    },
+    eval_p95: {
+        title: 'Latencia de evaluación p95',
+        body: 'El percentil 95 del tiempo de evaluación: el 95% de las oportunidades se evalúan por debajo de este valor. Captura la latencia en condiciones de carga (no solo el promedio), que es lo que importa para no perder oportunidades en picos.',
+    },
+    eval_max: {
+        title: 'Latencia de evaluación máxima',
+        body: 'El peor tiempo de evaluación observado en la muestra. Útil para detectar atascos puntuales (GC, contención de CPU, picos de mensajes).',
+    },
+    latencia_feed: {
+        title: 'Latencia de datos del feed',
+        body: 'Edad media de los order books de los exchanges conectados (ms): cuánto tiempo lleva el último dato recibido. Mide la frescura de la información con la que decide el motor; datos viejos = decisiones sobre precios obsoletos.',
+    },
+    conversion_ejecucion: {
+        title: 'Conversión detección → ejecución',
+        body: 'Porcentaje de oportunidades detectadas (última hora) que terminan ejecutándose. Mide qué tan selectivo es el motor: muy bajo = casi todo se descarta por costos; muy alto = poca exigencia de rentabilidad.',
+    },
+    tasa_aprobacion: {
+        title: 'Tasa de aprobación del risk manager',
+        body: 'De las decisiones recientes del motor, qué porcentaje fueron "execute" frente a "reject". Refleja la calidad del flujo de candidatos que llega al risk manager.',
+    },
+    eficiencia_deteccion: {
+        title: 'Eficiencia de detección',
+        body: 'Porcentaje de snapshots de order book procesados que generan al menos un candidato de arbitraje. Indica cuánto del trabajo de cómputo se traduce en oportunidades potenciales.',
+    },
+    margen_neto_medio: {
+        title: 'Margen neto medio',
+        body: 'Promedio del margen neto (tras fees y costos) de las oportunidades evaluadas. Mide la calidad del "edge" que encuentra el motor, no solo cuántas oportunidades hay.',
+    },
+
     // ---------- KPIs Dashboard ----------
     pnl_acumulado: {
         title: 'P&L acumulado',

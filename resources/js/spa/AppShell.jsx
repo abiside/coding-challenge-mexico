@@ -20,7 +20,9 @@ import { useNifty } from './data/store';
 import { OppDrawer } from './nifty/OppDrawer';
 import { HelpProvider } from './nifty/HelpPanel';
 import StrategiesScreen from './screens/Strategies';
+import TradingScreen, { TradingHeaderNav } from './screens/Trading';
 import StrategyDetail from './screens/StrategyDetail';
+import { StrategyWizard } from './nifty/StrategyWizard';
 import TransactionsScreen from './screens/Transactions';
 import MarketScreen from './screens/Market';
 import WalletsScreen from './screens/Wallets';
@@ -38,17 +40,18 @@ const NAV_GLOBAL = [
 ];
 
 const META = {
-    strategies: { title: 'Estrategias', crumb: 'Hub unificado · trading + arbitraje cross-exchange' },
-    market: { title: 'Mercado', crumb: 'Order book consolidado · monitor compartido' },
-    wallet: { title: 'Wallets', crumb: 'Capital consolidado de todas tus estrategias' },
-    perf: { title: 'Rendimiento', crumb: 'P&L y métricas de todas tus estrategias' },
-    trade: { title: 'Trades', crumb: 'Transacciones consolidadas de todas las estrategias' },
-    agent: { title: 'Agente', crumb: 'Asesor IA + modo autónomo sobre tus estrategias' },
-    settings: { title: 'Configuración', crumb: 'Cuenta y preferencias generales' },
+    strategies: { title: 'Estrategias', crumb: 'Hub unificado · trading + arbitraje cross-exchange', icon: 'dash' },
+    trading: { title: 'Trading', crumb: 'Estrategias long/short simuladas · navega entre ellas', icon: 'vol' },
+    market: { title: 'Mercado', crumb: 'Order book consolidado · monitor compartido', icon: 'market' },
+    wallet: { title: 'Wallets', crumb: 'Capital consolidado de todas tus estrategias', icon: 'wallet' },
+    perf: { title: 'Rendimiento', crumb: 'P&L y métricas de todas tus estrategias', icon: 'perf' },
+    trade: { title: 'Trades', crumb: 'Transacciones consolidadas de todas las estrategias', icon: 'trade' },
+    agent: { title: 'Agente', crumb: 'Asesor IA + modo autónomo sobre tus estrategias', icon: 'autopilot' },
+    settings: { title: 'Configuración', crumb: 'Cuenta y preferencias generales', icon: 'cfg' },
 };
 
 function resolveMeta(active, strategies) {
-    if (active === 'autopilot') return META.agent;
+    if (active === 'autopilot' || active === 'agent-auto') return META.agent;
     if (META[active]) return META[active];
     if (active.startsWith('strat:')) {
         const id = Number(active.slice(6));
@@ -59,16 +62,17 @@ function resolveMeta(active, strategies) {
                 crumb: s.type === 'cross_exchange'
                     ? 'Arbitraje cross-exchange · 2 patas + ciclos triangulares'
                     : 'Trading · ' + (s.algorithm ? s.algorithm.replace(/_/g, ' ') : 'long/short simulado'),
+                icon: s.type === 'cross_exchange' ? 'opp' : 'vol',
             };
         }
-        return { title: 'Estrategia', crumb: '' };
+        return { title: 'Estrategia', crumb: '', icon: 'dash' };
     }
     return META.strategies;
 }
 
 // Contexto del engine de arbitraje: estrategia cross-exchange o el Agente.
 function isEngineContext(active, strategies) {
-    if (active === 'agent' || active === 'autopilot') return true;
+    if (active === 'agent' || active === 'autopilot' || active === 'agent-auto') return true;
     if (active.startsWith('strat:')) {
         const id = Number(active.slice(6));
         const s = (strategies?.data || []).find((x) => x.id === id);
@@ -83,6 +87,9 @@ function Sidebar({ active, onNav }) {
     const online = conns.filter((c) => c.conn === 'ok').length;
     const instances = strategies?.data || [];
     const activeCount = instances.filter((s) => s.active).length;
+    const arbitrage = instances.find((s) => s.type === 'cross_exchange');
+    const tradingInstances = instances.filter((s) => s.type === 'trading');
+    const tradingActive = active === 'trading' || (active.startsWith('strat:') && tradingInstances.some((s) => 'strat:' + s.id === active));
 
     return (
         <aside className="side">
@@ -92,22 +99,25 @@ function Sidebar({ active, onNav }) {
             <button className={'nav-item' + (active === 'strategies' ? ' active' : '')} onClick={() => onNav('strategies')}>
                 <I.dash />Resumen
             </button>
-            {instances.map((s) => {
-                const key = 'strat:' + s.id;
-                const Icon = s.type === 'cross_exchange' ? I.opp : I.vol;
-                return (
-                    <button key={key} className={'nav-item' + (key === active ? ' active' : '')} onClick={() => onNav(key)} title={s.name}>
-                        <Icon /><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
-                        {s.active && <span className="conn ok" style={{ marginLeft: 'auto' }}><span className="d" /></span>}
-                    </button>
-                );
-            })}
+
+            {arbitrage && (
+                <button className={'nav-item' + (active === 'strat:' + arbitrage.id ? ' active' : '')} onClick={() => onNav('strat:' + arbitrage.id)} title={arbitrage.name}>
+                    <I.opp />Arbitraje
+                    {arbitrage.active && <span className="conn ok" style={{ marginLeft: 'auto' }}><span className="d" /></span>}
+                </button>
+            )}
+
+            <button className={'nav-item' + (tradingActive ? ' active' : '')} onClick={() => onNav('trading')}>
+                <I.vol />Trading
+                {tradingInstances.length > 0 && <span className="nav-count">{tradingInstances.length}</span>}
+            </button>
 
             <div className="nav-label">Global</div>
             {NAV_GLOBAL.map(([name, key, icon]) => {
                 const Icon = I[icon];
+                const on = key === active || (key === 'agent' && active === 'agent-auto');
                 return (
-                    <button key={key} className={'nav-item' + (key === active ? ' active' : '')} onClick={() => onNav(key)}>
+                    <button key={key} className={'nav-item' + (on ? ' active' : '')} onClick={() => onNav(key)}>
                         <Icon />{name}
                     </button>
                 );
@@ -174,7 +184,7 @@ function uptimeFrom(startedAt) {
     return h > 0 ? `${h}h ${m}m` : `${m}m ${sec % 60}s`;
 }
 
-function Header({ meta, engineCtx, activeStrategy, user, onLogout }) {
+function Header({ meta, engineCtx, activeStrategy, tradingNav, onNewStrategy, user, onLogout }) {
     const { simulation, engine, busy, strategyLive, market, strategies, actions } = useNifty();
     const conns = engine.connections || [];
     const online = conns.filter((c) => c.conn === 'ok').length;
@@ -196,17 +206,31 @@ function Header({ meta, engineCtx, activeStrategy, user, onLogout }) {
         return () => clearInterval(t);
     }, []);
 
+    // En contexto Trading el indicador de estado lo lleva el propio selector
+    // (punto verde/gris), así que no duplicamos el pill.
     let pill;
-    if (engineCtx) pill = <span className={'pill ' + (paused ? 'demo' : 'live')}><span className="dot" />{paused ? 'Engine pausado' : 'Engine activo'}</span>;
+    if (tradingNav) pill = null;
+    else if (engineCtx) pill = <span className={'pill ' + (paused ? 'demo' : 'live')}><span className="dot" />{paused ? 'Engine pausado' : 'Engine activo'}</span>;
     else if (trading) pill = <span className={'pill ' + (trading.active ? 'live' : 'demo')}><span className="dot" />{trading.active ? 'Estrategia activa' : 'Estrategia detenida'}</span>;
     else pill = <span className="pill"><span className="dot" />{activeCount} / {instances.length} estrategias activas</span>;
 
+    const SectionIcon = meta.icon ? I[meta.icon] : null;
+
     return (
         <header className="hdr">
-            <div>
-                <h1>{meta.title}</h1>
-                <div className="crumb">{meta.crumb}</div>
+            <div className="hdr-title">
+                {SectionIcon && <span className="hdr-ico"><SectionIcon /></span>}
+                <div>
+                    <h1>{meta.title}</h1>
+                    <div className="crumb">{meta.crumb}</div>
+                </div>
             </div>
+
+            {tradingNav && (
+                <div className="hdr-center">
+                    <TradingHeaderNav instances={tradingNav.instances} value={tradingNav.value} onSelect={tradingNav.onSelect} />
+                </div>
+            )}
 
             {pill}
             {trading && cb && <span className="pill demo"><span className="dot" />CB: {cb}</span>}
@@ -229,6 +253,11 @@ function Header({ meta, engineCtx, activeStrategy, user, onLogout }) {
                     <button className={'btn' + (paused ? ' primary' : '')} onClick={actions.startStop} disabled={busy}>
                         {paused ? <I.bolt style={{ width: 14, height: 14 }} /> : <I.pause />}
                         {busy ? '…' : paused ? 'Iniciar' : 'Pausar'}
+                    </button>
+                )}
+                {tradingNav && (
+                    <button className="btn" onClick={onNewStrategy} disabled={!tradingNav.enabled} title="Crear una nueva estrategia de trading">
+                        <I.bolt style={{ width: 14, height: 14 }} />Nueva
                     </button>
                 )}
                 {trading && (
@@ -255,6 +284,8 @@ export default function AppShell({ user, onLogout }) {
         return h || 'strategies';
     });
     const [open, setOpen] = useState(null);
+    const [wizardOpen, setWizardOpen] = useState(false);
+    const [tradingSel, setTradingSel] = useState(null);
 
     useEffect(() => {
         location.hash = active;
@@ -262,22 +293,53 @@ export default function AppShell({ user, onLogout }) {
         if (main) main.scrollTop = 0;
     }, [active]);
 
+    // Selección de estrategia de trading: por defecto la primera de la lista, y
+    // siempre una válida. (La lista llega ordenada con la más reciente primero.)
+    const tradingInstances = (strategies?.data || []).filter((s) => s.type === 'trading');
+    useEffect(() => {
+        if (!tradingInstances.length) {
+            if (tradingSel !== null) setTradingSel(null);
+        } else if (tradingSel == null || !tradingInstances.some((s) => s.id === tradingSel)) {
+            setTradingSel(tradingInstances[0].id);
+        }
+    }, [strategies]); // eslint-disable-line react-hooks/exhaustive-deps
+
     const onOpen = (o) => setOpen(o);
-    const meta = resolveMeta(active, strategies);
     const engineCtx = isEngineContext(active, strategies);
+
+    // Contexto Trading: una estrategia seleccionada cuyo dashboard se muestra y
+    // cuyos controles viven en el header. El título de la sección es "Trading".
+    const tradingCtx = active === 'trading' && tradingInstances.length > 0;
+    const selectedTrading = tradingCtx ? tradingInstances.find((s) => s.id === tradingSel) : null;
+
+    let meta = resolveMeta(active, strategies);
+    if (active === 'trading') {
+        const algo = selectedTrading?.algorithm ? selectedTrading.algorithm.replace(/_/g, ' ') : null;
+        meta = {
+            ...META.trading,
+            crumb: selectedTrading ? `${selectedTrading.name}${algo ? ' · ' + algo : ''}` : META.trading.crumb,
+        };
+    }
+
     const activeStrategy = active.startsWith('strat:')
         ? (strategies?.data || []).find((s) => s.id === Number(active.slice(6)))
+        : selectedTrading;
+
+    const tradingNav = tradingCtx
+        ? { instances: tradingInstances, value: tradingSel, onSelect: setTradingSel, enabled: !!strategies?.enabled }
         : null;
 
     let view;
     if (active === 'strategies') view = <StrategiesScreen onNav={setActive} />;
+    else if (active === 'trading') view = <TradingScreen selectedId={tradingSel} onNewStrategy={() => setWizardOpen(true)} />;
     else if (active === 'market') view = <MarketScreen />;
     else if (active === 'wallet') view = <WalletsScreen />;
     else if (active === 'perf') view = <PerfScreen />;
     else if (active === 'agent' || active === 'autopilot') view = <AgentScreen />;
+    else if (active === 'agent-auto') view = <AgentScreen initialTab="autonomous" />;
     else if (active === 'settings') view = <SettingsScreen />;
     else if (active === 'trade') view = <TransactionsScreen />;
-    else if (active.startsWith('strat:')) view = <StrategyDetail id={Number(active.slice(6))} onOpen={onOpen} />;
+    else if (active.startsWith('strat:')) view = <StrategyDetail id={Number(active.slice(6))} onOpen={onOpen} onNav={setActive} />;
     else view = <StrategiesScreen onNav={setActive} />;
 
     return (
@@ -285,10 +347,14 @@ export default function AppShell({ user, onLogout }) {
             <div className="app">
                 <Sidebar active={active} onNav={setActive} />
                 <div className="main">
-                    <Header meta={meta} engineCtx={engineCtx} activeStrategy={activeStrategy} user={user} onLogout={onLogout} />
+                    <Header meta={meta} engineCtx={engineCtx} activeStrategy={activeStrategy} tradingNav={tradingNav} onNewStrategy={() => setWizardOpen(true)} user={user} onLogout={onLogout} />
                     {view}
                 </div>
                 <OppDrawer o={open} onClose={() => setOpen(null)} />
+                <StrategyWizard open={wizardOpen} onClose={(created) => {
+                    setWizardOpen(false);
+                    if (created && created.id) { setTradingSel(created.id); setActive('trading'); }
+                }} />
             </div>
         </HelpProvider>
     );
