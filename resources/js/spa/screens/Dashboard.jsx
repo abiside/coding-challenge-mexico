@@ -19,7 +19,7 @@ function ChallengersChart({ onNav }) {
         try {
             const [st, sr] = await Promise.all([api('/arbitrage/settings'), api('/arbitrage/strategies/series')]);
             setSettings(st.data);
-            setSeries(sr);
+            if (sr && Array.isArray(sr.series)) setSeries(sr);
         } catch { /* se reintenta en el siguiente ciclo */ }
     };
     useEffect(() => {
@@ -41,23 +41,19 @@ function ChallengersChart({ onNav }) {
     };
 
     const chartSeries = series.series || [];
-    const hasSeries = chartSeries.some((s) => (s.points || []).length > 1);
+    const challengers = chartSeries.filter((s) => s.status === 'challenger');
+    // Solo tiene sentido graficar cuando hay challengers REALES que comparar y al
+    // menos una serie con ≥2 ventanas de evaluación. Si no, evitamos la línea
+    // plana del champion (que parpadea al reiniciarse las cohortes) y mostramos
+    // un estado informativo estable.
+    const hasData = challengers.length > 0 && chartSeries.some((s) => (s.points || []).length > 1);
 
     return (
         <div className="panel chal-panel">
             <div className="panel-h">
                 <I.autopilot style={{ width: 15, height: 15, color: 'var(--fuchsia)' }} />
                 <h2>Challengers · autopilot<InfoTip g="challenger" /></h2>
-                <div className="right" style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-                    <span className={'chal-state ' + (on ? 'on' : 'off')}>{on ? 'Activo' : 'Apagado'}</span>
-                    <Toggle on={on} onChange={toggle} disabled={busy || !settings} />
-                    <button className="btn icon" title="Configurar en Agente → Autónomo" onClick={() => onNav && onNav('agent-auto')}><I.cfg style={{ width: 15, height: 15 }} /></button>
-                </div>
-            </div>
-
-            {hasSeries ? (
-                <>
-                    <div className="chart-wrap chal-chart"><MultiLineChart axis={series.axis} series={chartSeries} markers={series.markers} h={150} /></div>
+                {hasData && (
                     <div className="chal-pills">
                         {chartSeries.map((s, idx) => {
                             const v = Number(s.final || 0);
@@ -70,10 +66,27 @@ function ChallengersChart({ onNav }) {
                             );
                         })}
                     </div>
-                </>
+                )}
+                <div className="right" style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                    <span className={'chal-state ' + (on ? 'on' : 'off')}>{on ? 'Activo' : 'Apagado'}</span>
+                    <Toggle on={on} onChange={toggle} disabled={busy || !settings} />
+                    <button className="btn icon" title="Configurar en Agente → Autónomo" onClick={() => onNav && onNav('agent-auto')}><I.cfg style={{ width: 15, height: 15 }} /></button>
+                </div>
+            </div>
+
+            {hasData ? (
+                <div className="chart-wrap chal-chart"><MultiLineChart axis={series.axis} series={chartSeries} markers={series.markers} h={150} /></div>
             ) : (
-                <div className="empty-note" style={{ padding: '24px 16px', fontSize: 12.5 }}>
-                    {on ? 'Esperando challengers del optimizador… (se generan en el próximo ciclo)' : 'Autopilot apagado · enciéndelo para que el agente proponga y compare challengers shadow.'}
+                <div className="chal-empty">
+                    <I.autopilot style={{ width: 22, height: 22, color: 'var(--tx-lo)' }} />
+                    <div className="chal-empty-msg">
+                        {!on
+                            ? 'Autopilot apagado. Enciéndelo para que el agente cree challengers shadow y los compare con el champion ventana a ventana.'
+                            : challengers.length === 0
+                                ? 'Sin challengers activos. El optimizador propondrá nuevos en el próximo ciclo de evaluación.'
+                                : 'Acumulando ventanas de evaluación… la comparación aparecerá en breve.'}
+                    </div>
+                    {!on && <button className="btn" style={{ fontSize: 12, padding: '6px 12px' }} onClick={toggle} disabled={busy || !settings}><I.bolt style={{ width: 13, height: 13 }} />Encender autopilot</button>}
                 </div>
             )}
         </div>
