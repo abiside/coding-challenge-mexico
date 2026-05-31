@@ -150,13 +150,13 @@ export default function EngineScreen() {
         { l: 'Detectadas / hora', v: metrics.opportunities_last_hour ?? '—', g: 'detectadas_hora' },
         { l: 'Ejecutadas / hora', v: metrics.executed_last_hour ?? '—', g: 'estado_opp' },
         { l: 'P&L realizado', v: metrics.realized_pnl != null ? signedMoney(metrics.realized_pnl) : '—', g: 'pnl_realizado' },
-        { l: 'Modo actual', v: metrics.mode || 'Demo', g: 'modo_simulacion' },
+        { l: 'Modo actual', v: metrics.mode || 'Simulación', g: 'modo_simulacion' },
     ];
 
     return (
         <div className="content">
             <div className="grid-3">
-                <div className="panel mtile hud"><div className="ml">Estado del engine<InfoTip g="estado_engine" /></div><div className={'mv ' + (simulation.active ? 'pos' : '')} style={simulation.active ? {} : { color: 'var(--tx-mid)' }}>● {simulation.active ? 'Activo' : 'Detenido'}</div><div className="mvsub">{metrics.mode || 'Demo'}</div></div>
+                <div className="panel mtile hud"><div className="ml">Estado del engine<InfoTip g="estado_engine" /></div><div className={'mv ' + (simulation.active ? 'pos' : '')} style={simulation.active ? {} : { color: 'var(--tx-mid)' }}>● {simulation.active ? 'Activo' : 'Detenido'}</div><div className="mvsub">{metrics.mode || 'Simulación'}</div></div>
                 <div className="panel mtile"><div className="ml">Circuit breaker<InfoTip g="circuit_breaker" /></div><div className={'mv ' + (metrics.circuit_breaker_enabled ? 'pos' : '')} style={metrics.circuit_breaker_enabled ? {} : { color: 'var(--tx-mid)' }}>{metrics.circuit_breaker_enabled ? 'ON' : 'OFF'}</div><div className="mvsub">protección de riesgo</div></div>
                 <div className="panel mtile"><div className="ml">Exchanges conectados<InfoTip g="exchanges_conectados" /></div><div className="mv">{online} / {conns.length}</div><div className="mvsub">{conns.length - online} con incidencias</div></div>
             </div>

@@ -1,7 +1,8 @@
 /* NIFTY — dashboard de una instancia de estrategia. Para trading: tabs General /
-   Señales / Posiciones / Configuración / AI Supervisor. Para cross-exchange:
-   monta las pantallas existentes del arbitraje (Oportunidades, Mercado, Engine,
-   Autopilot, Wallets, Rendimiento, Configuración) como tabs, sin reescribirlas. */
+   Señales / Posiciones / Configuración / Agente. Para cross-exchange: monta las
+   pantallas del arbitraje propias de su contexto (Resumen, Oportunidades, Engine,
+   Configuración) como tabs. Mercado, Wallets y Rendimiento son vistas globales y
+   viven en el menú "Global". */
 import { useEffect, useState } from 'react';
 import { useNifty } from '../data/store';
 import { I } from '../nifty/icons';
@@ -28,7 +29,7 @@ const CROSS_TABS = [
 ];
 
 function CrossExchangeDetail({ strategy, onOpen }) {
-    const { simulation, busy, actions } = useNifty();
+    const { simulation } = useNifty();
     const [tab, setTab] = useState('dash');
     const active = simulation.active;
 
@@ -49,9 +50,7 @@ function CrossExchangeDetail({ strategy, onOpen }) {
                     <div className="cfg-desc" style={{ margin: 0 }}>Arbitraje multi-exchange · 2 patas + ciclos triangulares</div>
                 </div>
                 <span className={'badge ' + (active ? 'exec' : 'expired')}><span className="d" />{active ? 'ENGINE ACTIVO' : 'ENGINE PAUSADO'}</span>
-                <button className={'btn ' + (active ? 'danger' : 'primary')} disabled={busy} onClick={actions.startStop}>
-                    {busy ? '…' : active ? 'Pausar engine' : 'Iniciar engine'}
-                </button>
+                <span className="cfg-desc" style={{ margin: 0, fontSize: 11 }}>Controla el engine desde la barra superior →</span>
             </div>
 
             <div className="panel" style={{ padding: 0 }}>
@@ -338,7 +337,7 @@ function TradingAi({ strategy }) {
 }
 
 function TradingDetail({ strategy, signals }) {
-    const { strategyLive, busy, actions } = useNifty();
+    const { strategyLive } = useNifty();
     const [tab, setTab] = useState('general');
     const metrics = strategyLive?.[strategy.id] || strategy.metrics || null;
     const active = strategy.active;
@@ -354,10 +353,7 @@ function TradingDetail({ strategy, signals }) {
                 </div>
                 {metrics?.circuit_breaker && <span className="badge reject"><span className="d" />CB: {metrics.circuit_breaker}</span>}
                 <span className={'badge ' + (active ? 'exec' : 'expired')}><span className="d" />{active ? 'ACTIVA' : 'DETENIDA'}</span>
-                <button className="btn" disabled={busy} onClick={() => actions.strategyAction(strategy.id, 'reset')} title="Reinicia billetera, posiciones y P&L"><I.reset style={{ width: 14, height: 14 }} />Reiniciar</button>
-                <button className={'btn ' + (active ? 'danger' : 'primary')} disabled={busy} onClick={() => actions.strategyAction(strategy.id, active ? 'stop' : 'start')}>
-                    {busy ? '…' : active ? 'Detener' : 'Iniciar'}
-                </button>
+                <span className="cfg-desc" style={{ margin: 0, fontSize: 11 }}>Controla la estrategia desde la barra superior →</span>
             </div>
 
             {active && !running && (

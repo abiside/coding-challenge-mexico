@@ -2,6 +2,7 @@
    Aquí NO se inventan datos: todo deriva de las respuestas de la API
    (/arbitrage/*) y del feed en vivo de Reverb. Lo que el backend no expone
    se deja en null y la UI lo muestra como "—". */
+import { formatClock } from './prefs';
 
 const EX_LABEL = {
     binance: 'Binance', kraken: 'Kraken', coinbase: 'Coinbase',
@@ -94,7 +95,7 @@ export function stageLabel(p) {
 
 export function timeFromMs(ms) {
     const d = ms ? new Date(ms) : new Date();
-    return d.toTimeString().slice(0, 8);
+    return formatClock(d, true);
 }
 
 /* Latencia de evaluación (aparición del order book → decisión). El backend la

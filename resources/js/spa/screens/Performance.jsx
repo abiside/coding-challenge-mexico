@@ -1,10 +1,12 @@
-/* NIFTY — Rendimiento: analítica derivada de trades + oportunidades reales. */
-import { useState } from 'react';
+/* NIFTY — Rendimiento (global): P&L y métricas de TODAS las estrategias.
+   Cabecera consolidada (trading + arbitraje) y, debajo, el detalle analítico
+   del arbitraje cross-exchange (derivado de trades + oportunidades). */
+import { useEffect, useState } from 'react';
 import { useNifty } from '../data/store';
 import { I } from '../nifty/icons';
 import { BigChart, BarChart, Columns, Donut, Segmented } from '../nifty/widgets';
 import { InfoTip } from '../nifty/InfoTip';
-import { derivePerf, deriveChartSeries, fmt } from '../nifty/format';
+import { derivePerf, deriveChartSeries, fmt, signedMoney } from '../nifty/format';
 
 function HBars({ rows }) {
     const maxAbs = Math.max(...rows.map((r) => Math.abs(r.pnl)), 0) || 1;
@@ -37,10 +39,35 @@ function FunnelRow({ label, value, max, color }) {
 }
 
 export default function PerfScreen() {
-    const { trades, opportunities } = useNifty();
+    const { trades, opportunities, strategies, transactions, actions } = useNifty();
     const [tf, setTf] = useState('week');
     const p = derivePerf(trades, opportunities);
     const chartSeries = deriveChartSeries(trades, tf);
+
+    // Ledger global para win rate consolidado (todas las estrategias).
+    useEffect(() => {
+        actions.loadTransactions();
+        const t = setInterval(() => actions.loadTransactions(), 15000);
+        return () => clearInterval(t);
+    }, [actions]);
+
+    // Consolidado por estrategia. El arbitraje no acumula equity de trading, así
+    // que su P&L realizado se toma del análisis de trades (p.pnlAcc).
+    const cons = strategies?.consolidated;
+    const byStrat = cons?.by_strategy || [];
+    const tradingStrats = byStrat.filter((s) => s.type === 'trading');
+    const tradingRealized = tradingStrats.reduce((a, s) => a + (Number(s.realized_pnl) || 0), 0);
+    const tradingUnreal = tradingStrats.reduce((a, s) => a + (Number(s.unrealized_pnl) || 0), 0);
+    const globalRealized = p.pnlAcc + tradingRealized;
+
+    const pnlBars = byStrat.map((s) => ({
+        label: s.name,
+        pnl: s.type === 'cross_exchange' ? p.pnlAcc : (Number(s.realized_pnl) || 0),
+    }));
+
+    const txs = transactions?.data || [];
+    const txWins = txs.filter((t) => (Number(t.net_pnl) || 0) > 0).length;
+    const globalWin = txs.length ? Math.round((txWins / txs.length) * 100) : 0;
 
     const qmetrics = [
         { l: 'Win rate', v: p.winRate + '%', g: 'win_rate' },
@@ -55,6 +82,22 @@ export default function PerfScreen() {
 
     return (
         <div className="content">
+            <div className="sec-title"><span className="tag">Consolidado · todas las estrategias</span><span className="ln" /></div>
+            <div className="grid-3" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
+                <div className="panel mtile hud" style={{ background: 'linear-gradient(150deg, rgba(47,240,207,0.07), transparent 70%)' }}><div className="ml">P&L realizado global<InfoTip g="pnl_acumulado" /></div><div className={'mv ' + (globalRealized >= 0 ? 'pos' : 'neg')}>{signedMoney(globalRealized)}</div><div className="mvsub">arbitraje + trading</div></div>
+                <div className="panel mtile"><div className="ml">P&L no realizado (trading)<InfoTip g="pnl_no_realizado" /></div><div className={'mv ' + (tradingUnreal >= 0 ? 'pos' : 'neg')}>{signedMoney(tradingUnreal)}</div><div className="mvsub">posiciones abiertas: {cons?.open_positions ?? 0}</div></div>
+                <div className="panel mtile"><div className="ml">Win rate global<InfoTip g="win_rate" /></div><div className="mv">{globalWin}%</div><div className="mvsub">{txs.length} operaciones cerradas</div></div>
+                <div className="panel mtile"><div className="ml">Estrategias<InfoTip g="trades_consolidado" /></div><div className="mv">{byStrat.length}</div><div className="mvsub">{tradingStrats.length} trading + arbitraje</div></div>
+            </div>
+
+            {pnlBars.length > 1 && (
+                <div className="panel panel-pad">
+                    <div className="sec-title"><h3>P&L por estrategia</h3><span className="ln" /></div>
+                    <HBars rows={pnlBars} />
+                </div>
+            )}
+
+            <div className="sec-title"><span className="tag">Detalle · Arbitraje cross-exchange</span><span className="ln" /></div>
             <div className="grid-3" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
                 <div className="panel mtile hud" style={{ background: 'linear-gradient(150deg, rgba(47,240,207,0.07), transparent 70%)' }}><div className="ml">P&L acumulado<InfoTip g="pnl_acumulado" /></div><div className={'mv ' + (p.pnlAcc >= 0 ? 'pos' : 'neg')}>{p.pnlAcc >= 0 ? '+' : '−'}${fmt(Math.abs(p.pnlAcc))}</div></div>
                 <div className="panel mtile"><div className="ml">P&L del día<InfoTip g="pnl_dia" /></div><div className={'mv ' + (p.pnlDay >= 0 ? 'pos' : 'neg')}>{p.pnlDay >= 0 ? '+' : '−'}${fmt(Math.abs(p.pnlDay))}</div></div>

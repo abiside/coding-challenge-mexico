@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import { api, getToken } from '../client';
 import { getEcho } from '../realtime';
 import { normalizeOpportunity } from '../nifty/format';
+import { getPrefs, setPrefs } from '../nifty/prefs';
 
 const NiftyContext = createContext(null);
 
@@ -102,6 +103,7 @@ export function NiftyProvider({ user, children }) {
     const [strategySignals, setStrategySignals] = useState({}); // { [strategyId]: [signals] }
     const [transactions, setTransactions] = useState({ data: [], summary: null });
     const [aiRecs, setAiRecs] = useState({ latest_summary: null, data: [] });
+    const [prefs, setPrefsState] = useState(() => ({ ...getPrefs() }));
     const [error, setError] = useState(null);
     const [busy, setBusy] = useState(false);
     const channelRef = useRef(null);
@@ -374,6 +376,15 @@ export function NiftyProvider({ user, children }) {
         return res.data;
     }, []);
 
+    // Preferencias generales del cliente (formato/zona horaria). Persistidas en
+    // localStorage vía prefs.js; aquí mantenemos una copia reactiva para que la
+    // UI (reloj, timestamps) se actualice al instante al cambiarlas.
+    const savePrefs = useCallback((patch) => {
+        const next = setPrefs(patch);
+        setPrefsState({ ...next });
+        return next;
+    }, []);
+
     const resetProcess = useCallback(async () => {
         const res = await api('/arbitrage/onboarding/reset', { method: 'POST' });
         await Promise.all([loadSettings(), refreshFast(), refreshSlow()]);
@@ -404,9 +415,9 @@ export function NiftyProvider({ user, children }) {
         simulation, wallets, trades, opportunities, market, engine, engineLive, settings, options,
         promotions, liveFeed, cycleFeed, cycles, cyclesSummary, error, busy, btcPrice,
         meanRev, meanRevTrades, meanRevLive, meanRevFeed,
-        strategies, strategyLive, strategySignals, transactions, aiRecs,
+        strategies, strategyLive, strategySignals, transactions, aiRecs, prefs,
         actions: {
-            startStop, meanRevStartStop, meanRevReset, saveSettings, addWallet, removeWallet, resetProcess,
+            startStop, meanRevStartStop, meanRevReset, saveSettings, savePrefs, addWallet, removeWallet, resetProcess,
             refreshFast, refreshSlow, loadSettings, setError,
             loadStrategies, loadTransactions, createStrategy, strategyAction, strategyConfig, strategyDelete,
             loadStrategyOverview, loadStrategyPositions, updateAiRecommendation,

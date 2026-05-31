@@ -247,7 +247,7 @@ export const GLOSSARY = {
     },
     modo_simulacion: {
         title: 'Inyección de precio sintético',
-        body: 'En mercado real los spreads casi nunca cubren los fees. Este modo desplaza aleatoriamente los precios del order book para crear escenarios rentables y ver el motor operar. Solo demo.',
+        body: 'En mercado real los spreads casi nunca cubren los fees. Este modo desplaza aleatoriamente los precios del order book para crear escenarios rentables y ver el motor operar. Solo para simulación.',
     },
     deriva_orderbook: {
         title: 'Deriva del order book',

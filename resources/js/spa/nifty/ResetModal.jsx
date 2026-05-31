@@ -1,6 +1,6 @@
 /* NIFTY — modal de confirmación para reiniciar el proceso (acción destructiva).
    Borra toda la data de transacciones y los challengers/champion del usuario y
-   restaura las wallets. Se usa desde el pill "Modo Demo" y desde el Engine. */
+   restaura las wallets. Se usa desde Configuración y desde el Engine. */
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNifty } from '../data/store';

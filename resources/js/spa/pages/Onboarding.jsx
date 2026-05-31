@@ -100,11 +100,11 @@ export default function Onboarding({ onDone, onLogout }) {
                         <div className="brand-mark" style={{ flex: 'none' }}><I.bolt style={{ width: 16, height: 16, color: '#0a0710' }} /></div>
                         <div>
                             <div style={{ fontWeight: 600, color: 'var(--tx-hi)' }}>¿Solo quieres ver el motor en acción?</div>
-                            <div className="cfg-desc">Empieza con una demo lista: estrategia, wallets con saldos en USDT, USD, BTC y ETH (arbitraje de 2 patas y triangular) y simulación activa.</div>
+                            <div className="cfg-desc">Empieza con datos de ejemplo listos: estrategia, wallets con saldos en USDT, USD, BTC y ETH (arbitraje de 2 patas y triangular) y simulación activa.</div>
                         </div>
                     </div>
                     <button className="btn primary" onClick={startDemo} disabled={demoLoading}>
-                        <I.bolt style={{ width: 14, height: 14 }} />{demoLoading ? 'Preparando…' : 'Empezar con demo'}
+                        <I.bolt style={{ width: 14, height: 14 }} />{demoLoading ? 'Preparando…' : 'Empezar con datos de ejemplo'}
                     </button>
                 </div>
 
