@@ -237,11 +237,14 @@ return [
     |
     | Cada N segundos el runner drena las métricas acumuladas por cada engine
     | (champion + challengers) y las persiste en `strategy_evaluations`. Esa
-    | tabla es el log de aprendizaje que alimenta al optimizador.
+    | tabla es el log de aprendizaje que alimenta al optimizador y el eje X de la
+    | gráfica "Optimizado vs base" del autopilot: un punto por ventana. Un
+    | intervalo más corto = más puntos = curva más constante (a costa de más
+    | filas y de mostrar una ventana temporal más corta en la gráfica).
     |
     */
 
-    'evaluation_interval_seconds' => (int) env('ARBITRAGE_EVAL_INTERVAL', 60),
+    'evaluation_interval_seconds' => (int) env('ARBITRAGE_EVAL_INTERVAL', 15),
 
     /*
     |--------------------------------------------------------------------------

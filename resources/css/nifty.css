@@ -462,7 +462,10 @@ body {
 
 /* hero kpi */
 .kpi.hero { background: linear-gradient(150deg, rgba(var(--accent-rgb), 0.09), transparent 70%); }
-.kpi.hero::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: var(--accent); }
+/* Barra de acento superior del hero. Reseteamos width/border/border-radius
+   porque esta tarjeta también lleva `.hud`, cuyo `::before` (bracket de esquina)
+   colisiona con este pseudo-elemento y dejaba una cajita glitcheada arriba-izq. */
+.kpi.hero::before { content: ""; position: absolute; inset: 0 0 auto 0; width: auto; height: 2px; background: var(--accent); border: 0; border-radius: 0; }
 .kpi.hero .big { font-size: 34px; color: var(--profit); }
 .kpi.hero .ico { background: var(--accent); border: none; box-shadow: 0 3px 10px -5px rgba(var(--accent-rgb), 0.45); }
 .kpi.hero .ico svg { color: #0a0710; }
@@ -475,7 +478,23 @@ body {
 .kpi.hud::after { display: none; }
 
 /* ---- Grid layout for chart + opps ---- */
-.grid-2 { display: grid; grid-template-columns: 1.55fr 1fr; gap: 22px; align-items: start; }
+.grid-2 { display: grid; grid-template-columns: 1.55fr 1fr; gap: 22px; align-items: stretch; }
+
+/* La columna derecha (oportunidades) se estira al alto de la izquierda (gráfica
+   P&L + autopilot) para quedar cuadrada con el fondo de esa sección; la lista
+   crece y hace scroll dentro del panel en vez de cortarse a una altura fija. */
+.opp-panel { display: flex; flex-direction: column; }
+.opp-panel .opp-list { flex: 1; max-height: none; }
+
+/* Dashboard: la columna izquierda (gráfica + challengers) define la altura de la fila;
+   la lista de oportunidades se ajusta a ese alto con scroll interno. El contenido del
+   panel va en un contenedor absoluto para no inflar el track del grid. */
+.dash-grid .opp-panel { position: relative; min-height: 0; }
+.dash-grid .opp-panel .opp-fill {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+}
+.dash-grid .opp-panel .opp-fill .opp-list { flex: 1 1 0; min-height: 0; max-height: none; overflow-y: auto; }
 
 /* Chart */
 .chart-wrap { padding: 8px 14px 16px; }
@@ -738,6 +757,9 @@ body {
   .grid-2 { grid-template-columns: 1fr; }
   .kpis { grid-template-columns: repeat(2, 1fr); }
   .grid-3 { grid-template-columns: 1fr 1fr; }
+  /* En una sola columna ya no hay columna izquierda que iguale: vuelve al tope
+     fijo para que la lista de oportunidades no crezca sin límite. */
+  .opp-panel .opp-list { max-height: 472px; }
 }
 @media (max-width: 720px) {
   .app { grid-template-columns: 1fr; }

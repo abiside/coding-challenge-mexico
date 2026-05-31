@@ -12,7 +12,7 @@
    El header es CONTEXTUAL: solo muestra los controles del engine de arbitraje
    (Simulación, exchanges/latencia, Iniciar/Pausar) cuando estás en su contexto
    (estrategia cross-exchange o Agente). En el resto enseña un estado global. */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { I } from './nifty/icons';
 import { BrandLogo } from './nifty/BrandLogo';
 import { formatClock } from './nifty/prefs';
@@ -96,10 +96,6 @@ function Sidebar({ active, onNav }) {
             <BrandLogo tagline="Strategies Hub" />
 
             <div className="nav-label">Estrategias</div>
-            <button className={'nav-item' + (active === 'strategies' ? ' active' : '')} onClick={() => onNav('strategies')}>
-                <I.dash />Resumen
-            </button>
-
             {arbitrage && (
                 <button className={'nav-item' + (active === 'strat:' + arbitrage.id ? ' active' : '')} onClick={() => onNav('strat:' + arbitrage.id)} title={arbitrage.name}>
                     <I.opp />Arbitraje
@@ -110,6 +106,10 @@ function Sidebar({ active, onNav }) {
             <button className={'nav-item' + (tradingActive ? ' active' : '')} onClick={() => onNav('trading')}>
                 <I.vol />Trading
                 {tradingInstances.length > 0 && <span className="nav-count">{tradingInstances.length}</span>}
+            </button>
+
+            <button className={'nav-item' + (active === 'strategies' ? ' active' : '')} onClick={() => onNav('strategies')}>
+                <I.dash />Resumen
             </button>
 
             <div className="nav-label">Global</div>
@@ -279,10 +279,12 @@ function Header({ meta, engineCtx, activeStrategy, tradingNav, onNewStrategy, us
 
 export default function AppShell({ user, onLogout }) {
     const { strategies } = useNifty();
-    const [active, setActive] = useState(() => {
-        const h = (location.hash || '').replace('#', '');
-        return h || 'strategies';
-    });
+    // Si la app se abre con un enlace directo (#hash) lo respetamos; si no, el
+    // destino por defecto es Arbitraje (la estrategia principal), que se resuelve
+    // en cuanto carga la lista de estrategias (su id es dinámico).
+    const initialHashRef = useRef((location.hash || '').replace('#', ''));
+    const didDefaultRef = useRef(false);
+    const [active, setActive] = useState(() => initialHashRef.current || 'strategies');
     const [open, setOpen] = useState(null);
     const [wizardOpen, setWizardOpen] = useState(false);
     const [tradingSel, setTradingSel] = useState(null);
@@ -292,6 +294,17 @@ export default function AppShell({ user, onLogout }) {
         const main = document.querySelector('.main');
         if (main) main.scrollTop = 0;
     }, [active]);
+
+    // Redirección inicial a Arbitraje (solo una vez, y solo si no hubo deep link).
+    useEffect(() => {
+        if (didDefaultRef.current) return;
+        if (initialHashRef.current) { didDefaultRef.current = true; return; }
+        const arb = (strategies?.data || []).find((s) => s.type === 'cross_exchange');
+        if (arb) {
+            didDefaultRef.current = true;
+            setActive('strat:' + arb.id);
+        }
+    }, [strategies]);
 
     // Selección de estrategia de trading: por defecto la primera de la lista, y
     // siempre una válida. (La lista llega ordenada con la más reciente primero.)

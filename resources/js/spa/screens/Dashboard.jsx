@@ -5,7 +5,7 @@ import { useNifty } from '../data/store';
 import { I } from '../nifty/icons';
 import { Kpi, BigChart, OppRow, Lat, Segmented, CyclesPanel, Th, Toggle, MultiLineChart, lineColor } from '../nifty/widgets';
 import { InfoTip } from '../nifty/InfoTip';
-import { deriveKpis, deriveChartSeries, equityToChartSeries, deriveWinRateSpark, windowTotal, normalizeOpportunity, deriveMarketRows, deriveEfficiency, fmt, fmtLatency, signedMoney } from '../nifty/format';
+import { deriveKpis, deriveChartSeries, equityToChartSeries, deriveWinRateSpark, windowTotal, normalizeOpportunity, deriveMarketRows, fmt, signedMoney } from '../nifty/format';
 
 /* Gráfica compacta de champion-challenger (autopilot) que aprovecha el hueco
    bajo la gráfica de P&L. Muestra el P&L acumulado por estrategia (igual que en
@@ -94,7 +94,7 @@ function ChallengersChart({ onNav }) {
 }
 
 export default function DashboardScreen({ onOpen, onNav }) {
-    const { trades, opportunities, market, liveFeed, engine, engineLive, promotions, cycleFeed, cycles, cyclesSummary } = useNifty();
+    const { trades, opportunities, market, liveFeed, engine, promotions, cycleFeed, cycles, cyclesSummary } = useNifty();
     const [tf, setTf] = useState('m15');
 
     // Curva de equity ESTABLE desde el servidor: evita que la historia se
@@ -125,21 +125,6 @@ export default function DashboardScreen({ onOpen, onNav }) {
     const rows = deriveMarketRows(market);
     const connected = rows.filter((r) => r.conn === 'ok').length;
 
-    // Métricas de eficiencia del motor: latencia de evaluación por oportunidad,
-    // throughput, conversión y frescura del feed.
-    const live = engineLive || engine.live || null;
-    const eff = deriveEfficiency(opportunities, engine.metrics, live, rows);
-    const effTiles = [
-        { l: 'Evaluación media / oportunidad', v: fmtLatency(eff.avgEvalUs), g: 'tiempo_evaluacion', sub: eff.sampleSize ? `muestra de ${eff.sampleSize} opp` : 'sin datos' },
-        { l: 'Evaluación p95', v: fmtLatency(eff.p95EvalUs), g: 'eval_p95', sub: 'el 95% se evalúa por debajo' },
-        { l: 'Evaluación máx', v: fmtLatency(eff.maxEvalUs), g: 'eval_max', sub: 'peor caso observado' },
-        { l: 'Latencia de datos (feed)', v: eff.avgFeedMs != null ? Math.round(eff.avgFeedMs) + ' ms' : '—', g: 'latencia_feed', sub: eff.maxFeedMs != null ? 'máx ' + Math.round(eff.maxFeedMs) + ' ms' : 'frescura del order book' },
-        { l: 'Conversión detección → ejecución', v: eff.conversion != null ? eff.conversion.toFixed(1) + '%' : '—', g: 'conversion_ejecucion', sub: eff.detectedHour != null ? `${eff.executedHour ?? 0} / ${eff.detectedHour} en 1h` : 'oportunidades que se ejecutan' },
-        { l: 'Tasa de aprobación', v: eff.approvalRate != null ? eff.approvalRate.toFixed(1) + '%' : '—', g: 'tasa_aprobacion', sub: 'execute vs reject del risk manager' },
-        { l: 'Eficiencia de detección', v: eff.detectEff != null ? eff.detectEff.toFixed(2) + '%' : '—', g: 'eficiencia_deteccion', sub: eff.snapshots != null ? fmt(eff.snapshots, 0) + ' snapshots' : 'candidatos / snapshots' },
-        { l: 'Margen neto medio', v: eff.avgNetMarginPct != null ? eff.avgNetMarginPct.toFixed(3) + '%' : '—', g: 'margen_neto_medio', sub: 'calidad del edge evaluado' },
-    ];
-
     return (
         <div className="content">
             <div className="kpis">
@@ -153,7 +138,7 @@ export default function DashboardScreen({ onOpen, onNav }) {
                     detail={k.volume.detail} sparkColor="#ff39a8" />
             </div>
 
-            <div className="grid-2">
+            <div className="grid-2 dash-grid">
                 <div className="grid-col">
                     <div className="panel hud">
                         <div className="panel-h">
@@ -176,43 +161,22 @@ export default function DashboardScreen({ onOpen, onNav }) {
                     <ChallengersChart onNav={onNav} />
                 </div>
 
-                <div className="panel">
-                    <div className="panel-h">
-                        <I.opp style={{ width: 16, height: 16, color: 'var(--fuchsia)' }} />
-                        <h2>Oportunidades 2 patas (en vivo)</h2>
-                        <div className="right">
-                            <span className="pill live" style={{ fontSize: '10px', padding: '4px 9px' }}><span className="dot" />{detectedHour}/h</span>
-                        </div>
-                    </div>
-                    <div className="opp-list">
-                        {feed.length === 0 ? (
-                            <div className="empty-note" style={{ padding: '20px' }}>Inicia la simulación para ver el flujo de oportunidades en tiempo real.</div>
-                        ) : (
-                            feed.map((o) => <OppRow key={o.id} o={o} onClick={() => onOpen(o)} />)
-                        )}
-                    </div>
-                </div>
-            </div>
-
-            <div className="panel">
-                <div className="panel-h">
-                    <I.engine style={{ width: 16, height: 16, color: 'var(--turq)' }} />
-                    <h2>Eficiencia del motor</h2>
-                    <div className="right">
-                        <span className={'pill ' + (live ? 'live' : '')} style={{ fontSize: '10px', padding: '4px 9px' }}>
-                            <span className="dot" />{live ? 'en vivo' : eff.sampleSize ? 'histórico' : 'sin datos'}
-                        </span>
-                    </div>
-                </div>
-                <div className="panel-pad" style={{ paddingTop: 8 }}>
-                    <div className="grid-3" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
-                        {effTiles.map((t, i) => (
-                            <div key={i} className="mtile" style={{ padding: '10px 0' }}>
-                                <div className="ml">{t.l}{t.g && <InfoTip g={t.g} />}</div>
-                                <div className="mv" style={{ fontSize: 20 }}>{t.v}</div>
-                                {t.sub && <div className="mvsub">{t.sub}</div>}
+                <div className="panel opp-panel">
+                    <div className="opp-fill">
+                        <div className="panel-h">
+                            <I.opp style={{ width: 16, height: 16, color: 'var(--fuchsia)' }} />
+                            <h2>Oportunidades 2 patas (en vivo)</h2>
+                            <div className="right">
+                                <span className="pill live" style={{ fontSize: '10px', padding: '4px 9px' }}><span className="dot" />{detectedHour}/h</span>
                             </div>
-                        ))}
+                        </div>
+                        <div className="opp-list">
+                            {feed.length === 0 ? (
+                                <div className="empty-note" style={{ padding: '20px' }}>Inicia la simulación para ver el flujo de oportunidades en tiempo real.</div>
+                            ) : (
+                                feed.map((o) => <OppRow key={o.id} o={o} onClick={() => onOpen(o)} />)
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
