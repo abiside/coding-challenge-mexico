@@ -116,6 +116,95 @@ final class RollingPriceWindow
         return $this->times[count($this->times) - 1] - $this->times[$this->head];
     }
 
+    /** Último precio almacenado (o 0 si la ventana está vacía). */
+    public function latest(): float
+    {
+        $last = count($this->times) - 1;
+
+        return $last >= $this->head ? $this->prices[$last] : 0.0;
+    }
+
+    /**
+     * Precio más reciente cuyo timestamp es <= $tsMs (búsqueda binaria sobre la
+     * serie ordenada). Útil para calcular returns multi-ventana en O(log n).
+     */
+    public function closeAtOrBefore(int $tsMs): ?float
+    {
+        $lo = $this->head;
+        $hi = count($this->times) - 1;
+        if ($hi < $lo) {
+            return null;
+        }
+
+        $found = null;
+        while ($lo <= $hi) {
+            $mid = intdiv($lo + $hi, 2);
+            if ($this->times[$mid] <= $tsMs) {
+                $found = $this->prices[$mid];
+                $lo = $mid + 1;
+            } else {
+                $hi = $mid - 1;
+            }
+        }
+
+        return $found;
+    }
+
+    /**
+     * Retorno porcentual entre el precio actual y el de hace $lookbackMs, o null
+     * si no hay cobertura suficiente.
+     */
+    public function returnPct(int $nowMs, int $lookbackMs): ?float
+    {
+        if ($this->count() < 2 || $this->coverageMs() < $lookbackMs) {
+            return null;
+        }
+
+        $past = $this->closeAtOrBefore($nowMs - $lookbackMs);
+        $current = $this->latest();
+        if ($past === null || $past <= 0.0 || $current <= 0.0) {
+            return null;
+        }
+
+        return (($current - $past) / $past) * 100.0;
+    }
+
+    /**
+     * Máximo y mínimo de los últimos $lookbackMs (escaneo desde la primera
+     * muestra dentro de la ventana). Devuelve [high, low] o null si está vacía.
+     *
+     * @return array{0: float, 1: float}|null
+     */
+    public function highLow(int $nowMs, int $lookbackMs): ?array
+    {
+        $total = count($this->times);
+        if ($total - $this->head <= 0) {
+            return null;
+        }
+
+        $cutoff = $nowMs - $lookbackMs;
+        $high = -INF;
+        $low = INF;
+        for ($i = $this->head; $i < $total; $i++) {
+            if ($this->times[$i] < $cutoff) {
+                continue;
+            }
+            $price = $this->prices[$i];
+            if ($price > $high) {
+                $high = $price;
+            }
+            if ($price < $low) {
+                $low = $price;
+            }
+        }
+
+        if ($high === -INF) {
+            return null;
+        }
+
+        return [$high, $low];
+    }
+
     private function evict(int $nowMs): void
     {
         $cutoff = $nowMs - $this->windowMs;

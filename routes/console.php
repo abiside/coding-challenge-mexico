@@ -25,6 +25,16 @@ if ((bool) config('arbitrage.retention.enabled', true)) {
         ->runInBackground();
 }
 
+// AI Supervisor del módulo de Estrategias: corre fuera del loop ReactPHP y, por
+// cada usuario con estrategias de trading, resume el mercado/performance y
+// persiste recomendaciones (solo opina, nunca ejecuta). Degrada a un resumen
+// determinista si no hay API key del LLM.
+Schedule::command('strategies:supervise')
+    ->cron((string) config('ai.supervisor.cron', '*/15 * * * *'))
+    ->withoutOverlapping()
+    ->onOneServer()
+    ->runInBackground();
+
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');

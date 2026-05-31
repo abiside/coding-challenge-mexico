@@ -52,6 +52,24 @@ final class WalletManager implements WalletRepositoryInterface
         $this->ledgerListener = $listener;
     }
 
+    /**
+     * Reinicia los balances a un estado inicial (todo o nada), descartando el
+     * estado actual. Usado para "reiniciar el ejercicio" sin recrear el objeto,
+     * de modo que todos los colaboradores que tienen la referencia vean el reset.
+     *
+     * @param  array<string, array<string, float>>  $initial  exchange => asset => amount
+     */
+    public function reset(array $initial = []): void
+    {
+        $this->balances = [];
+        $this->versions = [];
+        foreach ($initial as $exchange => $assets) {
+            foreach ($assets as $asset => $amount) {
+                $this->balances[strtolower($exchange)][strtoupper($asset)] = (float) $amount;
+            }
+        }
+    }
+
     public function available(string $exchange, string $asset): float
     {
         return $this->balances[strtolower($exchange)][strtoupper($asset)] ?? 0.0;

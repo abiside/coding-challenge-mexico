@@ -205,6 +205,23 @@ final class MeanReversionEngine
     }
 
     /**
+     * Reinicia el "ejercicio": billetera a su saldo inicial, posiciones,
+     * métricas, idempotencia del simulador y cooldowns. CONSERVA a propósito las
+     * ventanas de precio (PriceWindowStore) y el último precio observado, que son
+     * el histórico usado para evaluar monedas y no deben perderse ni re-calentar.
+     *
+     * @param  array<string, array<string, float>>  $walletInit  exchange => asset => amount
+     */
+    public function reset(array $walletInit): void
+    {
+        $this->wallets->reset($walletInit);
+        $this->positions->reset();
+        $this->simulator->reset();
+        $this->metrics->drain();
+        $this->lastTradeMs = [];
+    }
+
+    /**
      * Valuación de la cartera marcada a mercado: cada posición se valora al
      * último mid observado de su símbolo (no a su costo de entrada), para que el
      * dashboard refleje el valor real del capital desplegado y el P&L NO

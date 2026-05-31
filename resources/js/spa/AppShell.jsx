@@ -1,4 +1,9 @@
-/* NIFTY — app shell: sidebar + header + router por hash (portado del diseño). */
+/* NIFTY — app shell: sidebar + header + router por hash. La navegación gira en
+   torno a la sección "Estrategias" (resumen consolidado + una entrada por
+   instancia), pero Mercado, Wallets, Rendimiento y Autopilot se exponen como
+   ítems de primer nivel (vistas transversales del arbitraje), junto con Trades
+   global. Oportunidades, Engine y Configuración viven dentro de la estrategia
+   cross-exchange porque solo tienen sentido en ese contexto. */
 import { useEffect, useState } from 'react';
 import { I } from './nifty/icons';
 import { BrandLogo } from './nifty/BrandLogo';
@@ -6,52 +11,78 @@ import { useNifty } from './data/store';
 import { OppDrawer } from './nifty/OppDrawer';
 import { HelpProvider } from './nifty/HelpPanel';
 import { ResetProcessModal } from './nifty/ResetModal';
-import DashboardScreen from './screens/Dashboard';
+import StrategiesScreen from './screens/Strategies';
+import StrategyDetail from './screens/StrategyDetail';
+import TransactionsScreen from './screens/Transactions';
 import MarketScreen from './screens/Market';
-import OppsScreen from './screens/Opportunities';
-import TradesScreen from './screens/Trades';
 import WalletsScreen from './screens/Wallets';
 import PerfScreen from './screens/Performance';
-import EngineScreen from './screens/Engine';
-import ConfigScreen from './screens/Config';
-import AutopilotScreen from './screens/Autopilot';
-import MeanReversionScreen from './screens/MeanReversion';
+import AgentScreen from './screens/Agent';
 
+// Vistas transversales del arbitraje promovidas a primer nivel.
 const NAV_MONITOR = [
-    ['Dashboard', 'dash', 'dash'],
     ['Mercado', 'market', 'market'],
-    ['Oportunidades', 'opp', 'opp'],
-    ['Reversión a la media', 'meanrev', 'vol'],
-    ['Trades', 'trade', 'trade'],
     ['Wallets', 'wallet', 'wallet'],
     ['Rendimiento', 'perf', 'perf'],
+    ['Trades', 'trade', 'trade'],
 ];
+// El "Agente" unifica asesor (AI Supervisor) + autónomo (Autopilot).
 const NAV_SYSTEM = [
-    ['Engine', 'engine', 'engine'],
-    ['Autopilot', 'autopilot', 'autopilot'],
-    ['Configuración', 'cfg', 'cfg'],
+    ['Agente', 'agent', 'autopilot'],
 ];
 
 const META = {
-    dash: { title: 'Dashboard', crumb: 'BTC/USDT · arbitraje multi-exchange' },
+    strategies: { title: 'Estrategias', crumb: 'Hub unificado · trading + arbitraje cross-exchange' },
     market: { title: 'Mercado', crumb: 'Order book consolidado · multi-exchange' },
-    opp: { title: 'Oportunidades', crumb: 'Monitor de arbitraje en tiempo real' },
-    meanrev: { title: 'Reversión a la media', crumb: 'Estrategia spot USDT · Binance · sockets dinámicos' },
-    trade: { title: 'Trades', crumb: 'Historial de operaciones simuladas' },
     wallet: { title: 'Wallets', crumb: 'Balances y distribución de capital' },
     perf: { title: 'Rendimiento', crumb: 'Análisis de P&L y métricas de calidad' },
-    engine: { title: 'Engine', crumb: 'Salud del motor y conexiones' },
-    autopilot: { title: 'Autopilot', crumb: 'Champion-challenger y optimización' },
-    cfg: { title: 'Configuración', crumb: 'Reglas de operación y gestión de riesgo' },
+    trade: { title: 'Trades', crumb: 'Transacciones consolidadas de todas las estrategias' },
+    agent: { title: 'Agente', crumb: 'Asesor IA + modo autónomo sobre tus estrategias' },
 };
 
+function resolveMeta(active, strategies) {
+    if (active === 'autopilot') return META.agent;
+    if (META[active]) return META[active];
+    if (active.startsWith('strat:')) {
+        const id = Number(active.slice(6));
+        const s = (strategies?.data || []).find((x) => x.id === id);
+        if (s) {
+            return {
+                title: s.name,
+                crumb: s.type === 'cross_exchange'
+                    ? 'Arbitraje cross-exchange · 2 patas + ciclos triangulares'
+                    : 'Trading · ' + (s.algorithm ? s.algorithm.replace(/_/g, ' ') : 'long/short simulado'),
+            };
+        }
+        return { title: 'Estrategia', crumb: '' };
+    }
+    return META.strategies;
+}
+
 function Sidebar({ active, onNav }) {
-    const { simulation, engine } = useNifty();
+    const { simulation, engine, strategies } = useNifty();
     const conns = engine.connections || [];
     const online = conns.filter((c) => c.conn === 'ok').length;
+    const instances = strategies?.data || [];
+
     return (
         <aside className="side">
-            <BrandLogo tagline="Arbitrage Engine" />
+            <BrandLogo tagline="Strategies Hub" />
+
+            <div className="nav-label">Estrategias</div>
+            <button className={'nav-item' + (active === 'strategies' ? ' active' : '')} onClick={() => onNav('strategies')}>
+                <I.dash />Resumen
+            </button>
+            {instances.map((s) => {
+                const key = 'strat:' + s.id;
+                const Icon = s.type === 'cross_exchange' ? I.opp : I.vol;
+                return (
+                    <button key={key} className={'nav-item' + (key === active ? ' active' : '')} onClick={() => onNav(key)} title={s.name}>
+                        <Icon /><span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
+                        {s.active && <span className="conn ok" style={{ marginLeft: 'auto' }}><span className="d" /></span>}
+                    </button>
+                );
+            })}
 
             <div className="nav-label">Monitoreo</div>
             {NAV_MONITOR.map(([name, key, icon]) => {
@@ -62,6 +93,7 @@ function Sidebar({ active, onNav }) {
                     </button>
                 );
             })}
+
             <div className="nav-label">Sistema</div>
             {NAV_SYSTEM.map(([name, key, icon]) => {
                 const Icon = I[icon];
@@ -71,20 +103,20 @@ function Sidebar({ active, onNav }) {
                     </button>
                 );
             })}
+
             <div className="nav-spacer" />
             <div className="side-card">
                 <div className="row"><span>Engine</span><span className={'conn ' + (simulation.active ? 'ok' : 'recon')}><span className="d" />{simulation.active ? 'ONLINE' : 'IDLE'}</span></div>
                 <div className="row"><span>Conexiones</span><span className="v">{online} / {conns.length || '—'}</span></div>
-                <div className="row"><span>Circuit breaker</span><span className="v" style={{ color: 'var(--profit)' }}>{engine.metrics?.circuit_breaker_enabled ? 'ON' : 'OFF'}</span></div>
+                <div className="row"><span>Instancias</span><span className="v">{instances.length}</span></div>
             </div>
         </aside>
     );
 }
 
-/* Indicador + toggle del modo simulación (deriva sintética de precios), junto al
-   "Modo Demo". Refleja el estado real de `simulation_enabled` y permite
-   encenderlo/apagarlo desde el header; el engine lo aplica en su próximo
-   reconcile (~3s), sin reiniciar el worker. */
+/* Indicador + toggle del modo simulación (deriva sintética de precios) del
+   engine de arbitraje. Refleja `simulation_enabled` y lo enciende/apaga sin
+   reiniciar el worker. */
 function SimToggle() {
     const { settings, actions } = useNifty();
     const [working, setWorking] = useState(false);
@@ -124,9 +156,8 @@ function uptimeFrom(startedAt) {
     return h > 0 ? `${h}h ${m}m` : `${m}m ${sec % 60}s`;
 }
 
-function Header({ active, user, onLogout }) {
+function Header({ meta, user, onLogout }) {
     const { simulation, engine, busy, market, actions } = useNifty();
-    const m = META[active];
     const conns = engine.connections || [];
     const online = conns.filter((c) => c.conn === 'ok').length;
     const oks = conns.filter((c) => c.conn === 'ok' && c.age_ms != null);
@@ -142,8 +173,8 @@ function Header({ active, user, onLogout }) {
     return (
         <header className="hdr">
             <div>
-                <h1>{m.title}</h1>
-                <div className="crumb">{m.crumb}</div>
+                <h1>{meta.title}</h1>
+                <div className="crumb">{meta.crumb}</div>
             </div>
             <span className={'pill ' + (paused ? 'demo' : 'live')}><span className="dot" />{paused ? 'Engine pausado' : 'Engine activo'}</span>
             <SimToggle />
@@ -170,50 +201,11 @@ function Header({ active, user, onLogout }) {
     );
 }
 
-const SIM_INVITE_KEY = 'nifty_sim_invite_dismissed';
-
-function SimulatorInvite() {
-    const { settings, simulation, actions } = useNifty();
-    const [dismissed, setDismissed] = useState(() => localStorage.getItem(SIM_INVITE_KEY) === '1');
-    const [working, setWorking] = useState(false);
-
-    if (!settings || settings.simulation_enabled !== false || dismissed) return null;
-
-    const dismiss = () => { localStorage.setItem(SIM_INVITE_KEY, '1'); setDismissed(true); };
-
-    const enable = async () => {
-        setWorking(true);
-        try {
-            await actions.saveSettings({ simulation_enabled: true, simulation_max_drift_pct: settings.simulation_max_drift_pct || 0.5 });
-            if (!simulation.active) await actions.startStop();
-            await actions.loadSettings();
-            await actions.refreshSlow();
-        } catch { /* el error se refleja vía store */ } finally { setWorking(false); }
-    };
-
-    return (
-        <div className="panel panel-pad" style={{ margin: '16px 30px 0', display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', justifyContent: 'space-between', borderLeft: '3px solid var(--accent)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 280, flex: 1 }}>
-                <div className="brand-mark" style={{ flex: 'none' }}><I.bolt style={{ width: 16, height: 16, color: '#0a0710' }} /></div>
-                <div>
-                    <div style={{ fontWeight: 600, color: 'var(--tx-hi)' }}>Enciende el simulador de oportunidades</div>
-                    <div className="cfg-desc">En mercado real los spreads casi nunca cubren los fees. El simulador inyecta una deriva sintética de precios para crear escenarios rentables (2 patas y ciclos triangulares) y ver el motor operar.</div>
-                </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <button className="btn" onClick={dismiss}>Más tarde</button>
-                <button className="btn primary" onClick={enable} disabled={working}>
-                    <I.bolt style={{ width: 14, height: 14 }} />{working ? 'Encendiendo…' : 'Encender simulador'}
-                </button>
-            </div>
-        </div>
-    );
-}
-
 export default function AppShell({ user, onLogout }) {
+    const { strategies } = useNifty();
     const [active, setActive] = useState(() => {
         const h = (location.hash || '').replace('#', '');
-        return META[h] ? h : 'dash';
+        return h || 'strategies';
     });
     const [open, setOpen] = useState(null);
 
@@ -224,28 +216,24 @@ export default function AppShell({ user, onLogout }) {
     }, [active]);
 
     const onOpen = (o) => setOpen(o);
+    const meta = resolveMeta(active, strategies);
 
     let view;
-    switch (active) {
-        case 'market': view = <MarketScreen />; break;
-        case 'opp': view = <OppsScreen onOpen={onOpen} />; break;
-        case 'meanrev': view = <MeanReversionScreen />; break;
-        case 'trade': view = <TradesScreen />; break;
-        case 'wallet': view = <WalletsScreen />; break;
-        case 'perf': view = <PerfScreen />; break;
-        case 'engine': view = <EngineScreen />; break;
-        case 'autopilot': view = <AutopilotScreen />; break;
-        case 'cfg': view = <ConfigScreen />; break;
-        default: view = <DashboardScreen onOpen={onOpen} />;
-    }
+    if (active === 'strategies') view = <StrategiesScreen onNav={setActive} />;
+    else if (active === 'market') view = <MarketScreen />;
+    else if (active === 'wallet') view = <WalletsScreen />;
+    else if (active === 'perf') view = <PerfScreen />;
+    else if (active === 'agent' || active === 'autopilot') view = <AgentScreen />;
+    else if (active === 'trade') view = <TransactionsScreen />;
+    else if (active.startsWith('strat:')) view = <StrategyDetail id={Number(active.slice(6))} onOpen={onOpen} />;
+    else view = <StrategiesScreen onNav={setActive} />;
 
     return (
         <HelpProvider>
             <div className="app">
                 <Sidebar active={active} onNav={setActive} />
                 <div className="main">
-                    <Header active={active} user={user} onLogout={onLogout} />
-                    <SimulatorInvite />
+                    <Header meta={meta} user={user} onLogout={onLogout} />
                     {view}
                 </div>
                 <OppDrawer o={open} onClose={() => setOpen(null)} />

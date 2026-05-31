@@ -54,6 +54,9 @@ final class BinanceStreamHub
     /** @var (callable(array<int, mixed>, int): void)|null */
     private $onAllTickers = null;
 
+    /** @var (callable(array<string, mixed>): void)|null */
+    private $onKline = null;
+
     public function __construct(
         private readonly LoopInterface $loop,
         private readonly WebSocketClient $client,
@@ -63,6 +66,10 @@ final class BinanceStreamHub
         private readonly int $orderBookDepth = 20,
         private readonly string $orderBookSpeed = '100ms',
         private readonly string $exchange = 'binance',
+        // Suscribir además velas por símbolo (features de volumen). Off por
+        // defecto para no alterar el worker de reversión a la media.
+        private readonly bool $subscribeKlines = false,
+        private readonly string $klineInterval = '1m',
     ) {
     }
 
@@ -80,6 +87,14 @@ final class BinanceStreamHub
     public function onAllTickers(callable $callback): void
     {
         $this->onAllTickers = $callback;
+    }
+
+    /**
+     * @param  callable(array<string, mixed>): void  $callback
+     */
+    public function onKline(callable $callback): void
+    {
+        $this->onKline = $callback;
     }
 
     public function start(): void
@@ -111,6 +126,9 @@ final class BinanceStreamHub
             if (! isset($this->activeSymbols[$symbol])) {
                 $this->activeSymbols[$symbol] = true;
                 $toAdd[] = $this->depthStream($symbol);
+                if ($this->subscribeKlines) {
+                    $toAdd[] = $this->klineStream($symbol);
+                }
             }
         }
 
@@ -129,6 +147,9 @@ final class BinanceStreamHub
             if (isset($this->activeSymbols[$symbol])) {
                 unset($this->activeSymbols[$symbol]);
                 $toRemove[] = $this->depthStream($symbol);
+                if ($this->subscribeKlines) {
+                    $toRemove[] = $this->klineStream($symbol);
+                }
             }
         }
 
@@ -201,7 +222,13 @@ final class BinanceStreamHub
 
                 // Discovery siempre activo + reenvío del set de profundidad vigente.
                 $this->sendControl('SUBSCRIBE', [self::DISCOVERY_STREAM]);
-                $streams = array_map(fn (string $s): string => $this->depthStream($s), array_keys($this->activeSymbols));
+                $streams = [];
+                foreach (array_keys($this->activeSymbols) as $s) {
+                    $streams[] = $this->depthStream($s);
+                    if ($this->subscribeKlines) {
+                        $streams[] = $this->klineStream($s);
+                    }
+                }
                 if ($streams !== []) {
                     $this->sendControl('SUBSCRIBE', $streams);
                 }
@@ -269,6 +296,14 @@ final class BinanceStreamHub
             if ($snapshot !== null && $this->onDepth !== null) {
                 ($this->onDepth)($snapshot);
             }
+
+            return;
+        }
+
+        if (str_contains($stream, '@kline')) {
+            if ($this->onKline !== null) {
+                ($this->onKline)($data);
+            }
         }
     }
 
@@ -328,5 +363,12 @@ final class BinanceStreamHub
         $raw = strtolower(str_replace('/', '', $symbol));
 
         return sprintf('%s@depth%d@%s', $raw, $this->orderBookDepth, $this->orderBookSpeed);
+    }
+
+    private function klineStream(string $symbol): string
+    {
+        $raw = strtolower(str_replace('/', '', $symbol));
+
+        return sprintf('%s@kline_%s', $raw, $this->klineInterval);
     }
 }

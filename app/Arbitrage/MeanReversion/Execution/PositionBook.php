@@ -68,6 +68,12 @@ final class PositionBook
         return $realizedPnl;
     }
 
+    /** Vacía todas las posiciones (reinicio del ejercicio). */
+    public function reset(): void
+    {
+        $this->positions = [];
+    }
+
     public function quantity(string $asset): float
     {
         return $this->positions[strtoupper($asset)]['qty'] ?? 0.0;

@@ -689,7 +689,10 @@ body {
 .cfg-row .cfg-info { min-width: 0; }
 .cfg-row .cfg-name { font-size: 13.5px; font-weight: 500; color: var(--tx-hi); }
 .cfg-row .cfg-desc { font-size: 11.5px; color: var(--tx-lo); margin-top: 3px; }
+/* Descripción suelta (módulo de Estrategias): texto auxiliar bajo títulos. */
+.cfg-desc { font-size: 12px; line-height: 1.5; color: var(--tx-lo); margin: 6px 0 0; }
 .cfg-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px 24px; }
+.cfg-grid.cols-3 { grid-template-columns: repeat(3, 1fr); }
 
 /* exchange config card */
 .ex-cfg { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-bottom: 1px solid var(--line-2); }

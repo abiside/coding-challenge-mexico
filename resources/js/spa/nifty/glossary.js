@@ -353,4 +353,62 @@ export const GLOSSARY = {
         title: 'Motivo',
         body: 'Por qué se generó la señal: entrada/salida por z-score, reversión a la media, take-profit o stop-loss.',
     },
+
+    // ---------- Hub de Estrategias / trading long-short ----------
+    estrategias_hub: {
+        title: 'Hub de Estrategias',
+        body: 'Sección central que agrupa todas tus estrategias: las de trading (long y short simulado sobre monedas volátiles) y la de arbitraje cross-exchange. Cada una tiene su billetera y dashboard; aquí ves su rendimiento consolidado.',
+    },
+    ai_supervisor: {
+        title: 'AI Supervisor',
+        body: 'Un modelo de lenguaje que analiza el régimen de mercado, las señales recientes y el desempeño, y emite recomendaciones (focos, alertas, ajustes de parámetros). NUNCA ejecuta operaciones ni toca balances: solo opina.',
+    },
+    agente_ia: {
+        title: 'Agente sobre tus estrategias',
+        body: 'Un único agente por encima de todas tus estrategias con dos modos: ASESOR (analiza y recomienda focos, alertas y ajustes; tú aplicas) y AUTÓNOMO (ejecuta por ti). Hoy el modo autónomo corre el champion-challenger del arbitraje; en trading, auto-aplicar sugerencias será opt-in por estrategia.',
+    },
+    confidence: {
+        title: 'Confianza de la señal',
+        body: 'Puntaje 0–100% que estima qué tan fuerte es la señal según sus features (z-score, volumen, spread, etc.). El risk manager exige una confianza mínima antes de abrir una posición.',
+    },
+    trades_consolidado: {
+        title: 'Transacciones consolidadas',
+        body: 'Vista global con TODAS las operaciones del usuario: posiciones de trading (long/short) y trades de arbitraje cross-exchange, unificadas y etiquetadas por estrategia, con su P&L neto, fees, slippage y razón de cierre.',
+    },
+    estrategia_columna: {
+        title: 'Estrategia',
+        body: 'Instancia que originó la transacción (su nombre y tipo: trading o cross-exchange). Permite atribuir cada operación a la estrategia responsable y filtrar por ella.',
+    },
+    short_simulado: {
+        title: 'Short simulado',
+        body: 'Posición que gana si el precio baja: P&L = (precio_entrada − precio_salida) × tamaño, menos fees y funding opcional. Se simula con USDT como colateral y apalancamiento bajo configurable; no hay venta en corto real.',
+    },
+    slice_usdt: {
+        title: 'Tamaño por posición (USDT)',
+        body: 'Capital en USDT que se compromete al abrir cada posición. Acota la exposición por trade; el total invertido depende de cuántas posiciones simultáneas permitas.',
+    },
+    take_profit_pct: {
+        title: 'Take-profit %',
+        body: 'Objetivo de ganancia: al alcanzar este % a favor, la posición se cierra automáticamente y materializa el profit. Salida obligatoria del simulador.',
+    },
+    stop_loss_pct: {
+        title: 'Stop-loss %',
+        body: 'Límite de pérdida: al alcanzar este % en contra, la posición se cierra para acotar el daño. Salida obligatoria que protege la billetera.',
+    },
+    max_open_positions: {
+        title: 'Máx. posiciones abiertas',
+        body: 'Número máximo de posiciones simultáneas de la estrategia. Limita la exposición agregada y el capital desplegado a la vez.',
+    },
+    leverage: {
+        title: 'Apalancamiento',
+        body: 'Multiplicador del tamaño efectivo de la posición (solo short simulado). Más apalancamiento amplifica ganancias y pérdidas, y acerca el precio de liquidación simulada.',
+    },
+    min_confidence: {
+        title: 'Confianza mínima',
+        body: 'Umbral de confianza (0–1) que una señal debe superar para considerarse. Más alto = menos operaciones pero de mayor calidad esperada.',
+    },
+    max_spread_pct: {
+        title: 'Spread máximo %',
+        body: 'Spread bid/ask máximo tolerado para operar un símbolo. Por encima, el costo de cruzar el libro erosiona el edge y la señal se rechaza.',
+    },
 };

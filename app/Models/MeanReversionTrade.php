@@ -22,6 +22,7 @@ class MeanReversionTrade extends Model
 {
     protected $fillable = [
         'user_id',
+        'strategy_id',
         'exchange',
         'symbol',
         'side',

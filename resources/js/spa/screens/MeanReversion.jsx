@@ -3,11 +3,62 @@
    estado llega por canal PRIVADO de Reverb + REST. Muestra métricas en vivo,
    posiciones abiertas y el histórico de movimientos propios. */
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useNifty } from '../data/store';
 import { I } from '../nifty/icons';
 import { Th } from '../nifty/widgets';
 import { InfoTip } from '../nifty/InfoTip';
 import { fmt, signedMoney, timeFromMs, relativeTime } from '../nifty/format';
+
+/* Confirmación para reiniciar el ejercicio: borra transacciones, billetera y
+   P&L, pero conserva el histórico de precios usado para evaluar monedas. */
+function ResetExerciseModal({ open, onClose }) {
+    const { actions } = useNifty();
+    const [working, setWorking] = useState(false);
+    const [err, setErr] = useState(null);
+
+    if (!open) return null;
+
+    const confirm = async () => {
+        setWorking(true);
+        setErr(null);
+        try {
+            await actions.meanRevReset();
+            onClose(true);
+        } catch (e) {
+            setErr(e.message || 'No se pudo reiniciar el ejercicio.');
+        } finally {
+            setWorking(false);
+        }
+    };
+
+    return createPortal(
+        <div className="modal-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget && !working) onClose(false); }}>
+            <div className="modal-card" role="dialog" aria-modal="true" aria-label="Reiniciar ejercicio">
+                <div className="modal-icon danger">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ width: 22, height: 22 }}>
+                        <path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" />
+                    </svg>
+                </div>
+                <h3 className="modal-title">Reiniciar ejercicio</h3>
+                <p className="modal-text">
+                    Se borrarán <b>todas tus transacciones</b> y posiciones, y la billetera volverá a su
+                    saldo inicial de USDT con el P&L en cero. <b>Se conserva</b> el histórico de precios que
+                    el motor usa para evaluar monedas, así no hay que esperar el calentamiento de nuevo.
+                </p>
+                <p className="modal-text danger-text">Esta acción no se puede deshacer.</p>
+                {err && <div className="alert err" style={{ marginTop: 4, marginBottom: 0 }}><span className="ad" />{err}</div>}
+                <div className="modal-actions">
+                    <button className="btn" onClick={() => onClose(false)} disabled={working}>Cancelar</button>
+                    <button className="btn danger" onClick={confirm} disabled={working}>
+                        {working ? 'Reiniciando…' : 'Sí, reiniciar'}
+                    </button>
+                </div>
+            </div>
+        </div>,
+        document.body,
+    );
+}
 
 const REASON_LABEL = {
     zscore_entry: 'Entrada z-score',
@@ -55,6 +106,7 @@ function Kpi({ label, value, cls, detail, info }) {
 export default function MeanReversionScreen() {
     const { meanRev, meanRevLive, meanRevFeed, meanRevTrades, busy, actions } = useNifty();
     const [tab, setTab] = useState('signals');
+    const [resetOpen, setResetOpen] = useState(false);
 
     const enabled = !!meanRev?.enabled;
     const active = !!meanRev?.active;
@@ -89,6 +141,14 @@ export default function MeanReversionScreen() {
                     <span className="d" />{active ? 'ACTIVA' : 'DETENIDA'}
                 </span>
                 <button
+                    className="btn"
+                    disabled={busy || !enabled}
+                    onClick={() => setResetOpen(true)}
+                    title="Borra transacciones y restaura la billetera; conserva el histórico de precios"
+                >
+                    <I.reset style={{ width: 14, height: 14 }} />Reiniciar ejercicio
+                </button>
+                <button
                     className={'btn ' + (active ? 'danger' : 'primary')}
                     disabled={busy || !enabled}
                     onClick={() => actions.meanRevStartStop()}
@@ -97,6 +157,7 @@ export default function MeanReversionScreen() {
                     {busy ? '…' : active ? 'Detener mi simulación' : 'Iniciar mi simulación'}
                 </button>
             </div>
+            <ResetExerciseModal open={resetOpen} onClose={() => setResetOpen(false)} />
 
             {active && !running && (
                 <div className="panel panel-pad" style={{ borderLeft: '3px solid var(--warn)' }}>

@@ -101,6 +101,44 @@ class MeanReversionController extends Controller
         return response()->json(['active' => true, 'session' => $session], 201);
     }
 
+    /**
+     * Reinicia el "ejercicio" del usuario: borra TODAS sus transacciones
+     * (mean_reversion_trades) y restaura billetera + posiciones + P&L a cero,
+     * SIN tocar el histórico de precios que el worker usa para evaluar monedas.
+     *
+     * Si la sesión está activa, deja una bandera en cache para que el worker
+     * reinicie el engine en memoria (la billetera/posiciones viven ahí, no en
+     * DB); si está detenida, basta con limpiar el snapshot persistido.
+     */
+    public function reset(Request $request): JsonResponse
+    {
+        $userId = (int) $request->user()->id;
+
+        $deletedTrades = MeanReversionTrade::where('user_id', $userId)->delete();
+
+        $session = MeanReversionSession::where('user_id', $userId)->first();
+        if ($session !== null) {
+            $session->update([
+                'wallet_snapshot' => null,
+                'position_snapshot' => null,
+                'realized_pnl' => 0,
+            ]);
+        }
+
+        // Limpia el panel (heartbeat + feed) para un render fresco inmediato.
+        cache()->forget(MeanReversionCacheKeys::metrics($userId));
+        cache()->forget(MeanReversionCacheKeys::recentSignals($userId));
+
+        // Señal para que el worker reinicie el engine en vivo (si está activo).
+        cache()->put(MeanReversionCacheKeys::resetRequest($userId), (int) (microtime(true) * 1000), 300);
+
+        return response()->json([
+            'reset' => true,
+            'active' => $session !== null && $session->isActive(),
+            'deleted' => ['mean_reversion_trades' => $deletedTrades],
+        ]);
+    }
+
     /** Detiene la sesión del usuario (el worker derribará su engine). */
     public function stop(Request $request): JsonResponse
     {

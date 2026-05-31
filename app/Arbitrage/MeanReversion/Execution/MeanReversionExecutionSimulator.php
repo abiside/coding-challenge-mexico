@@ -34,6 +34,15 @@ final class MeanReversionExecutionSimulator
     ) {
     }
 
+    /**
+     * Olvida el registro de idempotencia para que, tras reiniciar el ejercicio,
+     * no se bloqueen nuevas ejecuciones por claves ya vistas.
+     */
+    public function reset(): void
+    {
+        $this->executed = [];
+    }
+
     public function simulate(EvaluatedSignal $signal, string $idempotencyKey): MeanReversionSimulationResult
     {
         if (isset($this->executed[$idempotencyKey])) {

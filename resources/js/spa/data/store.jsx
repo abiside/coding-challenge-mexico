@@ -94,6 +94,14 @@ export function NiftyProvider({ user, children }) {
     const [meanRevTrades, setMeanRevTrades] = useState({ data: [], summary: null });
     const [meanRevLive, setMeanRevLive] = useState(null);
     const [meanRevFeed, enqueueMeanRev] = usePacedFeed(30);
+    // Módulo unificado de Estrategias (worker strategies:run): lista de
+    // instancias + consolidado, métricas en vivo por instancia y recomendaciones
+    // del AI Supervisor.
+    const [strategies, setStrategies] = useState({ enabled: false, data: [], consolidated: null });
+    const [strategyLive, setStrategyLive] = useState({}); // { [strategyId]: metrics }
+    const [strategySignals, setStrategySignals] = useState({}); // { [strategyId]: [signals] }
+    const [transactions, setTransactions] = useState({ data: [], summary: null });
+    const [aiRecs, setAiRecs] = useState({ latest_summary: null, data: [] });
     const [error, setError] = useState(null);
     const [busy, setBusy] = useState(false);
     const channelRef = useRef(null);
@@ -137,6 +145,33 @@ export function NiftyProvider({ user, children }) {
         }
     }, []);
 
+    // Estrategias + AI Supervisor: lista/consolidado y recomendaciones. Se
+    // refresca aparte (cadencia propia) para no acoplarlo al feed de arbitraje.
+    const loadStrategies = useCallback(async () => {
+        try {
+            const [stratRes, aiRes] = await Promise.all([
+                api('/strategies'),
+                api('/strategies/ai/recommendations?limit=20'),
+            ]);
+            setStrategies(stratRes);
+            setAiRecs(aiRes);
+        } catch (err) {
+            setError(err.message);
+        }
+    }, []);
+
+    const loadTransactions = useCallback(async (params = {}) => {
+        try {
+            const qs = new URLSearchParams(params).toString();
+            const res = await api('/strategies/transactions' + (qs ? `?${qs}` : ''));
+            setTransactions({ data: res.data || [], summary: res.summary || null });
+            return res;
+        } catch (err) {
+            setError(err.message);
+            return null;
+        }
+    }, []);
+
     const loadSettings = useCallback(async () => {
         try {
             const res = await api('/arbitrage/settings');
@@ -151,10 +186,12 @@ export function NiftyProvider({ user, children }) {
         loadSettings();
         refreshFast();
         refreshSlow();
+        loadStrategies();
         const fast = setInterval(refreshFast, FAST_MS);
         const slow = setInterval(refreshSlow, SLOW_MS);
-        return () => { clearInterval(fast); clearInterval(slow); };
-    }, [loadSettings, refreshFast, refreshSlow]);
+        const strat = setInterval(loadStrategies, SLOW_MS);
+        return () => { clearInterval(fast); clearInterval(slow); clearInterval(strat); };
+    }, [loadSettings, refreshFast, refreshSlow, loadStrategies]);
 
     // Feed en vivo por canal privado del usuario.
     useEffect(() => {
@@ -162,6 +199,7 @@ export function NiftyProvider({ user, children }) {
         if (!token || !user) return undefined;
         let channel;
         let meanRevChannel;
+        let strategiesChannel;
         let echoRef;
         try {
             const echo = getEcho(token);
@@ -191,6 +229,24 @@ export function NiftyProvider({ user, children }) {
             meanRevChannel.listen('.meanrev.engine.metrics', (payload) => {
                 setMeanRevLive({ ...payload, _receivedAt: Date.now() });
             });
+
+            // Canal PRIVADO del módulo de Estrategias: heartbeat por instancia +
+            // feed de señales. El payload trae strategy_id para enrutar.
+            strategiesChannel = echo.private(`strategies.user.${user.id}`);
+            strategiesChannel.listen('.strategies.engine.metrics', (payload) => {
+                const sid = payload.strategy_id;
+                if (sid == null) return;
+                setStrategyLive((prev) => ({ ...prev, [sid]: { ...payload, _receivedAt: Date.now() } }));
+            });
+            strategiesChannel.listen('.strategies.signal.processed', (payload) => {
+                const sid = payload.strategy_id ?? payload?.signal?.strategy_id;
+                const stamped = { ...payload, _flashAt: Date.now() };
+                setStrategySignals((prev) => {
+                    const key = sid ?? 'all';
+                    const list = [stamped, ...(prev[key] || [])].slice(0, 40);
+                    return { ...prev, [key]: list };
+                });
+            });
         } catch (err) {
             setError(`Realtime: ${err.message}`);
         }
@@ -204,6 +260,11 @@ export function NiftyProvider({ user, children }) {
                 try { meanRevChannel.stopListening('.meanrev.signal.processed'); } catch { /* noop */ }
                 try { meanRevChannel.stopListening('.meanrev.engine.metrics'); } catch { /* noop */ }
                 try { echoRef?.leaveChannel(`private-meanrev.user.${user.id}`); } catch { /* noop */ }
+            }
+            if (strategiesChannel) {
+                try { strategiesChannel.stopListening('.strategies.engine.metrics'); } catch { /* noop */ }
+                try { strategiesChannel.stopListening('.strategies.signal.processed'); } catch { /* noop */ }
+                try { echoRef?.leaveChannel(`private-strategies.user.${user.id}`); } catch { /* noop */ }
             }
         };
     }, [user, enqueueOpp, enqueueCycle, enqueueMeanRev]);
@@ -234,6 +295,78 @@ export function NiftyProvider({ user, children }) {
             setBusy(false);
         }
     }, [meanRev.active, refreshSlow]);
+
+    const meanRevReset = useCallback(async () => {
+        setBusy(true);
+        setError(null);
+        try {
+            const res = await api('/meanrev/reset', { method: 'POST' });
+            setMeanRevLive(null);
+            await refreshSlow();
+            return res;
+        } catch (err) {
+            setError(err.message);
+            throw err;
+        } finally {
+            setBusy(false);
+        }
+    }, [refreshSlow]);
+
+    const createStrategy = useCallback(async (body) => {
+        setBusy(true);
+        setError(null);
+        try {
+            const res = await api('/strategies', { method: 'POST', body });
+            await loadStrategies();
+            return res.data;
+        } catch (err) {
+            setError(err.message);
+            throw err;
+        } finally {
+            setBusy(false);
+        }
+    }, [loadStrategies]);
+
+    const strategyAction = useCallback(async (id, action) => {
+        setBusy(true);
+        setError(null);
+        try {
+            const res = await api(`/strategies/${id}/${action}`, { method: 'POST' });
+            await loadStrategies();
+            return res;
+        } catch (err) {
+            setError(err.message);
+            throw err;
+        } finally {
+            setBusy(false);
+        }
+    }, [loadStrategies]);
+
+    const strategyConfig = useCallback(async (id, body) => {
+        const res = await api(`/strategies/${id}/config`, { method: 'PUT', body });
+        await loadStrategies();
+        return res.data;
+    }, [loadStrategies]);
+
+    const strategyDelete = useCallback(async (id) => {
+        await api(`/strategies/${id}`, { method: 'DELETE' });
+        await loadStrategies();
+    }, [loadStrategies]);
+
+    const loadStrategyOverview = useCallback(async (id) => {
+        const res = await api(`/strategies/${id}/overview`);
+        return res;
+    }, []);
+
+    const loadStrategyPositions = useCallback(async (id) => {
+        const res = await api(`/strategies/${id}/positions`);
+        return res;
+    }, []);
+
+    const updateAiRecommendation = useCallback(async (id, status) => {
+        await api(`/strategies/ai/recommendations/${id}`, { method: 'PUT', body: { status } });
+        await loadStrategies();
+    }, [loadStrategies]);
 
     const saveSettings = useCallback(async (patch) => {
         const res = await api('/arbitrage/settings', { method: 'PUT', body: patch });
@@ -271,7 +404,13 @@ export function NiftyProvider({ user, children }) {
         simulation, wallets, trades, opportunities, market, engine, engineLive, settings, options,
         promotions, liveFeed, cycleFeed, cycles, cyclesSummary, error, busy, btcPrice,
         meanRev, meanRevTrades, meanRevLive, meanRevFeed,
-        actions: { startStop, meanRevStartStop, saveSettings, addWallet, removeWallet, resetProcess, refreshFast, refreshSlow, loadSettings, setError },
+        strategies, strategyLive, strategySignals, transactions, aiRecs,
+        actions: {
+            startStop, meanRevStartStop, meanRevReset, saveSettings, addWallet, removeWallet, resetProcess,
+            refreshFast, refreshSlow, loadSettings, setError,
+            loadStrategies, loadTransactions, createStrategy, strategyAction, strategyConfig, strategyDelete,
+            loadStrategyOverview, loadStrategyPositions, updateAiRecommendation,
+        },
     };
 
     return <NiftyContext.Provider value={value}>{children}</NiftyContext.Provider>;

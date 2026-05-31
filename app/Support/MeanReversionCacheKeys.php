@@ -28,4 +28,14 @@ final class MeanReversionCacheKeys
     {
         return sprintf('meanrev:recent_signals:u%d', $userId);
     }
+
+    /**
+     * Señal efímera para que el worker reinicie el ejercicio (billetera +
+     * posiciones + métricas) de una sesión en vivo, conservando el histórico de
+     * precios usado para evaluar monedas. La pone el API y la consume el worker.
+     */
+    public static function resetRequest(int $userId): string
+    {
+        return sprintf('meanrev:reset_request:u%d', $userId);
+    }
 }

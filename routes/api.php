@@ -15,6 +15,9 @@ use App\Http\Controllers\Api\V1\Auth\AuthController;
 use App\Http\Controllers\Api\V1\HealthController;
 use App\Http\Controllers\Api\V1\MeanReversion\MeanReversionController;
 use App\Http\Controllers\Api\V1\MessageController;
+use App\Http\Controllers\Api\V1\Strategies\AiRecommendationController;
+use App\Http\Controllers\Api\V1\Strategies\StrategyInstanceController;
+use App\Http\Controllers\Api\V1\Strategies\TransactionController;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 
@@ -77,6 +80,31 @@ Route::prefix('v1')->group(function (): void {
             Route::get('/trades', [MeanReversionController::class, 'trades']);
             Route::post('/start', [MeanReversionController::class, 'start']);
             Route::post('/stop', [MeanReversionController::class, 'stop']);
+            Route::post('/reset', [MeanReversionController::class, 'reset']);
+        });
+
+        // Módulo unificado de Estrategias (worker strategies:run): instancias de
+        // trading (long/short simulado) y cross-exchange (envuelve el arbitraje).
+        Route::prefix('strategies')->group(function (): void {
+            Route::get('/catalog', [StrategyInstanceController::class, 'catalog']);
+            Route::get('/', [StrategyInstanceController::class, 'index']);
+            Route::post('/', [StrategyInstanceController::class, 'store']);
+
+            // Transacciones consolidadas (arbitraje + trading) de todas las estrategias.
+            Route::get('/transactions', [TransactionController::class, 'index']);
+
+            // AI Supervisor (solo recomendador).
+            Route::get('/ai/recommendations', [AiRecommendationController::class, 'index']);
+            Route::put('/ai/recommendations/{id}', [AiRecommendationController::class, 'update']);
+
+            Route::get('/{id}/overview', [StrategyInstanceController::class, 'overview']);
+            Route::get('/{id}/signals', [StrategyInstanceController::class, 'signals']);
+            Route::get('/{id}/positions', [StrategyInstanceController::class, 'positions']);
+            Route::post('/{id}/start', [StrategyInstanceController::class, 'start']);
+            Route::post('/{id}/stop', [StrategyInstanceController::class, 'stop']);
+            Route::post('/{id}/reset', [StrategyInstanceController::class, 'reset']);
+            Route::put('/{id}/config', [StrategyInstanceController::class, 'updateConfig']);
+            Route::delete('/{id}', [StrategyInstanceController::class, 'destroy']);
         });
     });
 });

@@ -151,6 +151,11 @@ class MeanReversionCommand extends Command
         });
         $this->reconcileSessions();
 
+        // Solicitudes de "reiniciar ejercicio" desde el panel (cache flag).
+        $loop->addPeriodicTimer(2.0, function (): void {
+            $this->processResetRequests();
+        });
+
         $this->scheduleHeartbeat();
         $this->registerSignalHandlers();
         $this->scheduleDuration();
@@ -193,6 +198,57 @@ class MeanReversionCommand extends Command
                 $this->closeContext($userId);
             }
         }
+    }
+
+    /**
+     * Procesa banderas de reinicio puestas por el API: reinicia el ejercicio de
+     * los contextos en vivo (billetera + posiciones + métricas) conservando el
+     * histórico de precios, y persiste/emite el estado limpio de inmediato.
+     */
+    private function processResetRequests(): void
+    {
+        foreach (array_keys($this->contexts) as $userId) {
+            $key = MeanReversionCacheKeys::resetRequest($userId);
+            try {
+                if (app(Cache::class)->get($key) === null) {
+                    continue;
+                }
+                app(Cache::class)->forget($key);
+            } catch (Throwable $e) {
+                $this->logger?->warning('[meanrev][reset] error leyendo bandera', ['user_id' => $userId, 'error' => $e->getMessage()]);
+
+                continue;
+            }
+            $this->resetContext($userId);
+        }
+    }
+
+    /** Reinicia el ejercicio de un usuario con sesión activa (engine en memoria). */
+    private function resetContext(int $userId): void
+    {
+        $ctx = $this->contexts[$userId] ?? null;
+        if ($ctx === null) {
+            return;
+        }
+
+        $initialUsdt = (float) ($this->config['initial_balances']['USDT'] ?? 10000.0);
+        try {
+            $session = MeanReversionSession::where('user_id', $userId)->first();
+            if ($session !== null && (float) $session->initial_usdt > 0.0) {
+                $initialUsdt = (float) $session->initial_usdt;
+            }
+        } catch (Throwable $e) {
+            // Usa el default de config si la DB falla.
+        }
+
+        $ctx['engine']->reset([$this->exchange => [$this->quote => $initialUsdt]]);
+        $this->persistContext($userId);
+        $this->emitContext($userId);
+
+        $this->logger?->info('[meanrev][reset] ejercicio reiniciado', [
+            'user_id' => $userId,
+            'initial_usdt' => $initialUsdt,
+        ]);
     }
 
     private function openContext(MeanReversionSession $session): void
